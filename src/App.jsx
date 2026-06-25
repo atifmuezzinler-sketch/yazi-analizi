@@ -8,10 +8,11 @@ export default function AdvancedTextAnalyzer() {
   const [improveError, setImproveError] = useState('');
   const [platform, setPlatform] = useState('genel');
   const [audienceType, setAudienceType] = useState('genel');
+  const [specificAudience, setSpecificAudience] = useState('');
   const [toneStyle, setToneStyle] = useState('genel');
   const [language, setLanguage] = useState('tr');
   const [compareMode, setCompareMode] = useState(false);
-  const [comparePlatforms] = useState(['gazete', 'haber', 'blog', 'twitter', 'instagram', 'linkedin', 'facebook']);
+  const [comparePlatforms] = useState(['gazete', 'instagram', 'facebook', 'sms']);
   const [suggestionsSource, setSuggestionsSource] = useState('template');
   const [aiGenerating, setAiGenerating] = useState(false);
   const [showHighlight, setShowHighlight] = useState(false);
@@ -22,13 +23,10 @@ export default function AdvancedTextAnalyzer() {
 
   const platforms = {
     genel: { name: 'Genel', color: '#9E9E9E', icon: '📄' },
-    gazete: { name: 'Gazete', color: '#607D8B', icon: '📰' },
-    haber: { name: 'Haber Portalı', color: '#F44336', icon: '📱' },
-    blog: { name: 'Blog/Dergi', color: '#9C27B0', icon: '📝' },
-    twitter: { name: 'Twitter/X', color: '#1DA1F2', icon: '𝕏' },
+    gazete: { name: 'Gazete ve Haber Portalı', color: '#607D8B', icon: '📰' },
     instagram: { name: 'Instagram', color: '#E4405F', icon: '📸' },
-    linkedin: { name: 'LinkedIn', color: '#0077B5', icon: '💼' },
-    facebook: { name: 'Facebook', color: '#1877F2', icon: '👥' }
+    facebook: { name: 'Facebook', color: '#1877F2', icon: '👥' },
+    sms: { name: 'SMS', color: '#25D366', icon: '💬' }
   };
 
   const audienceTypes = {
@@ -129,6 +127,8 @@ export default function AdvancedTextAnalyzer() {
     let t = inputText;
     t = t.replace(/(\d)\.(\d)/g, (m, a, b) => a + MASK + b);            // ondalık: 20.30
     t = t.replace(/(\d)\.(?=\s)/g, (m, a) => a + MASK);                 // sıra sayısı: 35. yıl
+    t = t.replace(/\b([IVX]{1,4})\.(?=\s)/g, (m, a) => a + MASK);       // Roma rakamı sıra sayısı: II. Meşrutiyet
+    t = t.replace(/\b([A-ZÇĞİÖŞÜ])\.(?=[A-ZÇĞİÖŞÜ]\.|\s)/g, (m, a) => a + MASK); // baş harf kısaltması: K.T., A.Ş., T.C., M.Ö.
     t = t.replace(/M\.Ö\./g, 'M' + MASK + 'Ö' + MASK).replace(/M\.S\./g, 'M' + MASK + 'S' + MASK);
     t = t.replace(/\.{3,}/g, (m) => MASK.repeat(m.length));             // üç nokta
     const abbr = ['Dr', 'Prof', 'Doç', 'Av', 'Sn', 'vb', 'vs', 'Yrd', 'Uzm', 'No',
@@ -150,6 +150,19 @@ export default function AdvancedTextAnalyzer() {
   };
 
   const splitSentences = (inputText) => segmentSentences(inputText).map((s) => s.trim());
+
+  // SMS segment hesabı: GSM-7 tek 160 / UCS-2 (Türkçe ç,ğ,ı,ş,ö,ü vb.) tek 70 / çoklu segment her ikisinde 153×n
+  const computeSmsInfo = (txt) => {
+    const t = txt || '';
+    const len = t.length;
+    const unicode = /[^\u0000-\u007F]/.test(t); // ASCII dışı karakter (Türkçe harfler dahil) → UCS-2
+    const single = unicode ? 70 : 160;
+    let segments;
+    if (len === 0) segments = 0;
+    else if (len <= single) segments = 1;
+    else segments = Math.ceil(len / 153);
+    return { len, unicode, single, segments };
+  };
 
   const analyzeText = (inputText) => {
     if (!inputText.trim()) return emptyMetricsObj();
@@ -245,26 +258,46 @@ export default function AdvancedTextAnalyzer() {
 
     const wordFrequency = {};
     const surfaceForms = {};
-    words.forEach((word) => {
-      const raw = word.toLowerCase().replace(/[^a-zçğıöşü]/g, '');
-      const stem = lightStem(word);
-      if (stem.length > 3 && !turkishStopwords.has(stem) && !turkishStopwords.has(raw)) {
-        wordFrequency[stem] = (wordFrequency[stem] || 0) + 1;
-        if (raw.length > 0) {
+    const capStats = {}; // stem -> { cap, total, standalone } : özel ad sezgisi
+    sentences.forEach((sentence) => {
+      const toks = sentence.trim().split(/\s+/);
+      toks.forEach((tok, ti) => {
+        const raw = tok.toLowerCase().replace(/[^a-zçğıöşü]/g, '');
+        if (!raw) return;
+        const stem = lightStem(tok);
+        if (stem.length > 3 && !turkishStopwords.has(stem) && !turkishStopwords.has(raw)) {
+          wordFrequency[stem] = (wordFrequency[stem] || 0) + 1;
           if (!surfaceForms[stem]) surfaceForms[stem] = {};
           surfaceForms[stem][raw] = (surfaceForms[stem][raw] || 0) + 1;
+          if (!capStats[stem]) capStats[stem] = { cap: 0, total: 0, standalone: false };
+          if (ti > 0) { // cümle başı değil
+            capStats[stem].total += 1;
+            const isCap = /^[A-ZÇĞİÖŞÜ]/.test(tok);
+            if (isCap) {
+              capStats[stem].cap += 1;
+              // önceki kelime küçük harfle başlıyorsa: tek başına büyük harf = özel ad işareti
+              if (/^[a-zçğıöşü]/.test(toks[ti - 1] || 'x')) capStats[stem].standalone = true;
+            }
+          }
         }
-      }
+      });
     });
+    // Özel ad: cümle ortasında DAİMA büyük harfli + en az bir kez tek başına (küçük harf sonrası) büyük harfli
+    const isProperNoun = (stem) => {
+      const s = capStats[stem];
+      return s && s.total >= 2 && s.cap === s.total && s.standalone;
+    };
     const repeatedWords = Object.entries(wordFrequency)
-      .filter(([w, count]) => count > 2)
+      .filter(([stem, count]) => count > 2 && !isProperNoun(stem))
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([stem, count]) => {
-        // Kök yerine en sık geçen GERÇEK yüzey biçimini göster ("beledi" değil "belediye")
-        const forms = surfaceForms[stem] || {};
-        const best = Object.entries(forms).sort((a, b) => b[1] - a[1])[0];
-        return { word: best ? best[0] : stem, count };
+        // Görünen biçim: gruptaki en KISA gerçek yüzey biçimi (taban hâle yakın, sahte kök üretmez)
+        const forms = Object.keys(surfaceForms[stem] || {});
+        const display = forms.length
+          ? forms.sort((a, b) => a.length - b.length || (surfaceForms[stem][b] - surfaceForms[stem][a]))[0]
+          : stem;
+        return { word: display, count };
       });
 
     const sentenceLengths = sentences.map((s) => s.trim().split(/\s+/).length);
@@ -327,7 +360,7 @@ export default function AdvancedTextAnalyzer() {
     if (transitionCount >= 3) seoScore += 10;
     seoScore = Math.min(100, seoScore);
 
-    const platformScore = calculatePlatformScore(platform, { characters, wordCount, sentenceCount, readabilityScore, formalityScore });
+    const platformScore = calculatePlatformScore(platform, { characters, wordCount, sentenceCount, readabilityScore, formalityScore, smsText: inputText });
     const engagementScore = calculateEngagementScore({ emotionalTone, readabilityScore, platform, sentenceCount });
     const trustScore = calculateTrustScore({ formalityScore, activePassiveRatio, transitionCount, platform });
 
@@ -345,31 +378,26 @@ export default function AdvancedTextAnalyzer() {
   const calculatePlatformScore = (platform, data) => {
     let score = 50;
     switch (platform) {
-      case 'twitter':
-        if (data.characters <= 280) score += 30; else score -= 20;
-        if (data.sentenceCount <= 3) score += 20;
-        break;
       case 'instagram':
         if (data.wordCount <= 150) score += 25;
         if (data.readabilityScore >= 70) score += 25;
-        break;
-      case 'linkedin':
-        if (data.wordCount >= 150 && data.wordCount <= 500) score += 25;
-        if (data.formalityScore >= 60) score += 25;
         break;
       case 'facebook':
         if (data.wordCount <= 250) score += 25;
         if (data.sentenceCount >= 3) score += 25;
         break;
       case 'gazete':
-      case 'haber':
         if (data.wordCount >= 300) score += 20;
         if (data.formalityScore >= 50) score += 30;
         break;
-      case 'blog':
-        if (data.wordCount >= 500) score += 30;
-        if (data.sentenceCount >= 10) score += 20;
+      case 'sms': {
+        // SMS rubriği: tek segmente sığmak esastır. Çok segment = ceza.
+        const sms = computeSmsInfo(data.smsText || '');
+        if (sms.segments <= 1) score += 40;
+        else score -= (sms.segments - 1) * 18;
+        if (data.sentenceCount <= 2) score += 10; // kısa ve net
         break;
+      }
       default:
         score = 70;
     }
@@ -391,7 +419,7 @@ export default function AdvancedTextAnalyzer() {
     if (data.formalityScore >= 60) score += 20;
     if (data.activePassiveRatio >= 70) score += 15;
     if (data.transitionCount >= 3) score += 15;
-    if (data.platform === 'gazete' || data.platform === 'haber') {
+    if (data.platform === 'gazete') {
       if (data.formalityScore >= 70) score += 10;
     }
     return Math.min(100, score);
@@ -417,16 +445,13 @@ export default function AdvancedTextAnalyzer() {
     const k0 = keywords[0] ? keywords[0].charAt(0).toUpperCase() + keywords[0].slice(1) : '';
 
     const headlines = [cap(lead, 80)];
-    if (platform === 'twitter') {
-      headlines.push(k0 ? `${k0}: ${cap(lead, 60)}` : cap(lead, 70));
-      headlines.push(`${cap(lead, 65)} 🧵`);
-    } else if (platform === 'instagram') {
+    if (platform === 'instagram') {
       headlines.push(`✨ ${cap(lead, 65)}`);
       headlines.push(`${cap(lead, 60)} 📸`);
-    } else if (platform === 'linkedin') {
-      headlines.push(k0 ? `${k0} üzerine: ${cap(lead, 55)}` : cap(lead, 70));
-      headlines.push(cap(lead, 65));
-    } else if (platform === 'gazete' || platform === 'haber') {
+    } else if (platform === 'sms') {
+      headlines.push(cap(lead, 60));
+      headlines.push(cap(lead, 45));
+    } else if (platform === 'gazete') {
       headlines.push(cap(lead, 70));
       headlines.push(keywords.length >= 2 ? `${k0}, ${keywords[1]} gündemi` : cap(lead, 70));
     } else {
@@ -443,7 +468,7 @@ export default function AdvancedTextAnalyzer() {
 
     const metaDescription = cap(clean, 150);
     const hashtags = [];
-    if (['twitter', 'instagram', 'linkedin'].includes(platform)) {
+    if (['instagram'].includes(platform)) {
       keywords.forEach((w) => hashtags.push('#' + w.charAt(0).toUpperCase() + w.slice(1)));
     }
     return { headlines: uniqueHeadlines, metaDescription, hashtags };
@@ -454,7 +479,7 @@ export default function AdvancedTextAnalyzer() {
     setImproveError('');
     const platformName = platforms[platform].name;
     const toneName = toneStyles[toneStyle].name;
-    const wantsHashtags = ['twitter', 'instagram', 'linkedin'].includes(platform);
+    const wantsHashtags = ['instagram'].includes(platform);
 
     const prompt = `Sen üst düzey bir Türkçe içerik editörü ve manşet yazarısın. Aşağıdaki metni oku, ANA MESAJINI/HABER DEĞERİNİ kavra ve "${platformName}" platformuna, "${toneName}" tonuna uygun öneriler üret.
 
@@ -473,7 +498,7 @@ KALİTE KURALLARI (ÇOK ÖNEMLİ):
 
 SADECE geçerli JSON döndür, başka HİÇBİR şey yazma (markdown, açıklama, ön söz yok):
 {"headlines": ["...", "...", "..."], "metaDescription": "...", "hashtags": []}
-
+${audienceType === 'spesifik' && specificAudience.trim() ? `\nHEDEF KİTLE: Öneriler şu kitleye göre yazılsın: "${specificAudience.trim()}". Başlık ve açıklamaları bu kitlenin ilgisini çekecek şekilde uyarla.\n` : ''}
 METİN:
 """
 ${text.slice(0, 2000)}
@@ -535,8 +560,8 @@ ${text.slice(0, 2000)}
       const wc = sentence.trim().split(/\s+/).filter(Boolean).length;
       let bg = 'transparent';
       let title = '';
-      if (wc > 30) { bg = '#FFCDD2'; title = `Çok uzun cümle (${wc} kelime)`; }
-      else if (wc > 20) { bg = '#FFF9C4'; title = `Uzun cümle (${wc} kelime)`; }
+      if (wc > 35) { bg = '#FFCDD2'; title = `Çok uzun cümle (${wc} kelime)`; }
+      else if (wc > 25) { bg = '#FFF9C4'; title = `Uzun cümle (${wc} kelime)`; }
       const tokens = sentence.split(/(\s+)/);
       const inner = tokens.map((tok, i) => {
         if (/^\s+$/.test(tok) || tok === '') return tok;
@@ -559,7 +584,7 @@ ${text.slice(0, 2000)}
     let longSentences = 0, passive = 0, filler = 0;
     matches.forEach((sentence) => {
       const wc = sentence.trim().split(/\s+/).filter(Boolean).length;
-      if (wc > 20) longSentences++;
+      if (wc > 25) longSentences++;
       sentence.split(/\s+/).forEach((tok) => {
         const clean = tok.toLowerCase().replace(/[.,!?;:"'’()]/g, '');
         if (clean && isPassiveWord(clean)) passive++;
@@ -600,19 +625,18 @@ ${text.slice(0, 2000)}
     const toneDesc = toneStyles[toneStyle].desc;
 
     const audienceInstruction = audienceType === 'spesifik'
-      ? 'Hedef kitle spesifik/uzman bir gruptur; terminolojiyi koru ancak akışı netleştir.'
+      ? (specificAudience.trim()
+          ? `Hedef kitle özel olarak şudur: "${specificAudience.trim()}". Metni bu kitlenin bilgi düzeyine, ilgi alanına ve diline göre uyarla; bu kitleye hitap eden örnek, ton ve terminoloji kullan.`
+          : 'Hedef kitle spesifik/uzman bir gruptur; terminolojiyi koru ancak akışı netleştir.')
       : 'Hedef kitle geneldir; herkesin anlayabileceği sade bir dil kullan.';
     const toneInstruction = toneStyle === 'genel'
       ? 'Metnin mevcut tonunu koru, belirli bir tona zorlama.'
       : `Metni "${toneName}" tonuna uygun hale getir (${toneDesc}). Tonu kelime seçimi, cümle ritmi ve hitap tarzıyla yansıt.`;
     const platformInstruction = {
-      twitter: 'Twitter/X için: kısa, vurucu, 280 karakter sınırını gözet.',
       instagram: 'Instagram için: akıcı, sıcak, görsel anlatıma uygun caption tarzı.',
-      linkedin: 'LinkedIn için: profesyonel ama erişilebilir, sektörel güven veren bir dil.',
       facebook: 'Facebook için: konuşma dilinde, etkileşime açık, samimi.',
-      gazete: 'Gazete için: 5N1K netliğinde, objektif, haber dili.',
-      haber: 'Haber portalı için: hızlı okunan, net, dijital haber formatı.',
-      blog: 'Blog/Dergi için: derinlikli, alt başlıklara uygun, akıcı.',
+      gazete: 'Gazete ve haber portalı için: 5N1K netliğinde, ters piramit kurgusu, objektif haber dili; en önemli bilgi ilk cümlede.',
+      sms: 'SMS için: tek mesaja sığacak kadar kısa, net ve tek eylem çağrılı; Türkçe karakterlerin segment sınırını düşürdüğünü gözet.',
       genel: 'Genel kullanım için dengeli ve evrensel bir dil kullan.'
     }[platform] || 'Genel kullanım için dengeli bir dil kullan.';
 
@@ -698,9 +722,12 @@ ${text}
     if (metrics.advancedAnalysis.repeatedOpeners && metrics.advancedAnalysis.repeatedOpeners.length > 0) suggestions.push(`${metrics.advancedAnalysis.repeatedOpeners[0].count} cümle "${metrics.advancedAnalysis.repeatedOpeners[0].phrase}…" ile başlıyor; açılışı çeşitlendirin.`);
     if (metrics.toneAnalysis.activePassiveRatio < 60) suggestions.push('Aktif cümle kullanımını artırarak yazınızı daha dinamik hale getirebilirsiniz.');
     if (metrics.advancedAnalysis.transitionWords < 2) suggestions.push('Geçiş ifadeleri ekleyerek cümleler arası akışı iyileştirebilirsiniz.');
-    if (platform === 'twitter' && metrics.characters > 280) suggestions.push('Twitter için metin çok uzun. 280 karakteri geçmeyin.');
+    if (platform === 'sms') {
+      const sms = computeSmsInfo(text);
+      if (sms.segments > 1) suggestions.push(`SMS ${sms.segments} parçaya bölünüyor (${sms.len} karakter${sms.unicode ? ', Türkçe karakter → 70/segment' : ''}). Tek mesaja indirmek için kısaltın.`);
+      else if (sms.unicode && sms.len > 60 && sms.len <= 70) suggestions.push('SMS tek segmente sığıyor ama sınırda; Türkçe karakter nedeniyle 70 karakter sınırına dikkat.');
+    }
     if (platform === 'instagram' && metrics.words > 150) suggestions.push('Instagram için daha kısa ve öz bir metin tercih edin.');
-    if (platform === 'linkedin' && metrics.toneAnalysis.formalityScore < 50) suggestions.push('LinkedIn için daha profesyonel bir ton kullanın.');
     if (suggestions.length === 0) suggestions.push('Metin dengeli görünüyor. Belirgin bir okunabilirlik sorunu tespit edilmedi.');
     return suggestions.slice(0, 6);
   };
@@ -713,7 +740,7 @@ ${text}
           const pltMetrics = analyzeText(text);
           const pltScore = calculatePlatformScore(plt, {
             characters: pltMetrics.characters, wordCount: pltMetrics.words, sentenceCount: pltMetrics.sentences,
-            readabilityScore: pltMetrics.readabilityScore, formalityScore: pltMetrics.toneAnalysis.formalityScore
+            readabilityScore: pltMetrics.readabilityScore, formalityScore: pltMetrics.toneAnalysis.formalityScore, smsText: text
           });
           return (
             <div key={plt} style={{ backgroundColor: '#F5F5F5', padding: '20px', borderRadius: '8px', border: `2px solid ${platforms[plt].color}` }}>
@@ -724,7 +751,10 @@ ${text}
                 <div style={{ fontSize: '14px' }}>Uygunluk Skoru</div>
               </div>
               <div style={{ marginTop: '15px', fontSize: '13px', color: '#666' }}>
-                <div style={{ marginBottom: '8px' }}><strong>Karakter:</strong> {pltMetrics.characters}{plt === 'twitter' && pltMetrics.characters > 280 && ' ⚠️'}</div>
+                <div style={{ marginBottom: '8px' }}><strong>Karakter:</strong> {pltMetrics.characters}</div>
+                {plt === 'sms' && (() => { const s = computeSmsInfo(text); return (
+                  <div style={{ marginBottom: '8px' }}><strong>Segment:</strong> {s.segments}{s.segments > 1 ? ' ⚠️' : ''}{s.unicode ? ' (TR)' : ''}</div>
+                ); })()}
                 <div style={{ marginBottom: '8px' }}><strong>Kelime:</strong> {pltMetrics.words}</div>
                 <div><strong>Okunabilirlik:</strong> {pltMetrics.readabilityScore}</div>
               </div>
@@ -761,6 +791,11 @@ ${text}
           <select value={audienceType} onChange={(e) => setAudienceType(e.target.value)} style={selStyle}>
             {Object.entries(audienceTypes).map(([key, val]) => (<option key={key} value={key}>{val.icon} {val.name}</option>))}
           </select>
+          {audienceType === 'spesifik' && (
+            <input type="text" value={specificAudience} onChange={(e) => setSpecificAudience(e.target.value)}
+              placeholder="Kitlenizi tanımlayın (örn: 50+ yaş KKTC seçmeni, genç girişimciler, akademisyenler)"
+              style={{ width: '100%', marginTop: '8px', padding: '10px', fontSize: '14px', border: '1px solid #ddd', borderRadius: '8px', boxSizing: 'border-box' }} />
+          )}
         </div>
         <div>
           <label style={labelStyle}>🎭 Ton</label>
@@ -780,6 +815,17 @@ ${text}
       <div style={{ marginBottom: '20px' }}>
         <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Analiz etmek istediğiniz yazıyı buraya yapıştırın..."
           style={{ width: '100%', minHeight: '200px', padding: '15px', fontSize: '16px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#F5F5F5', resize: 'vertical', boxSizing: 'border-box' }} />
+        {platform === 'sms' && text.trim() && (() => {
+          const s = computeSmsInfo(text);
+          const over = s.segments > 1;
+          return (
+            <div style={{ marginTop: '10px', padding: '10px 14px', borderRadius: '8px', fontSize: '14px', backgroundColor: over ? '#FFF3E0' : '#E8F5E9', border: `1px solid ${over ? '#FB8C00' : '#66BB6A'}`, color: '#1A1A1A' }}>
+              <strong>📱 SMS:</strong> {s.len} karakter · <strong>{s.segments} segment</strong>
+              {s.unicode && <span> · Türkçe karakter içeriyor → segment başına 70 karakter sınırı</span>}
+              {over && <span style={{ display: 'block', marginTop: '4px', color: '#E65100' }}>⚠️ Mesaj {s.segments} parça olarak gönderilecek. Tek mesaj için kısaltın.</span>}
+            </div>
+          );
+        })()}
       </div>
 
       <div style={{ textAlign: 'center', marginBottom: '20px', display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -818,8 +864,8 @@ ${text}
                 </div>
               )}
               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', marginBottom: '18px', fontSize: '13px', color: '#555' }}>
-                <span style={{ backgroundColor: '#FFF9C4', padding: '2px 8px', borderRadius: '3px' }}>Uzun cümle (20+)</span>
-                <span style={{ backgroundColor: '#FFCDD2', padding: '2px 8px', borderRadius: '3px' }}>Çok uzun (30+)</span>
+                <span style={{ backgroundColor: '#FFF9C4', padding: '2px 8px', borderRadius: '3px' }}>Uzun cümle (25+)</span>
+                <span style={{ backgroundColor: '#FFCDD2', padding: '2px 8px', borderRadius: '3px' }}>Çok uzun (35+)</span>
                 <span style={{ borderBottom: '2px solid #1976D2', color: '#0D47A1', padding: '0 2px' }}>Pasif yapı</span>
                 <span style={{ backgroundColor: '#E1BEE7', padding: '2px 8px', borderRadius: '3px' }}>Dolgu kelimesi</span>
               </div>
@@ -876,7 +922,7 @@ ${text}
                 </tr>
               </thead>
               <tbody>
-                <tr><td style={{ padding: '12px', border: '1px solid #ddd' }}>Karakter Sayısı</td><td style={{ padding: '12px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 'bold' }}>{metrics.characters}{platform === 'twitter' && metrics.characters > 280 && <span style={{ color: '#F44336' }}> ⚠️</span>}</td></tr>
+                <tr><td style={{ padding: '12px', border: '1px solid #ddd' }}>Karakter Sayısı</td><td style={{ padding: '12px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 'bold' }}>{metrics.characters}{platform === 'sms' && computeSmsInfo(text).segments > 1 && <span style={{ color: '#F44336' }}> ⚠️</span>}</td></tr>
                 <tr style={{ backgroundColor: '#fafafa' }}><td style={{ padding: '12px', border: '1px solid #ddd' }}>Kelime Sayısı</td><td style={{ padding: '12px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 'bold' }}>{metrics.words}</td></tr>
                 <tr><td style={{ padding: '12px', border: '1px solid #ddd' }}>Cümle Sayısı</td><td style={{ padding: '12px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 'bold' }}>{metrics.sentences}</td></tr>
                 <tr style={{ backgroundColor: '#fafafa' }}><td style={{ padding: '12px', border: '1px solid #ddd' }}>Ortalama Hece / Kelime</td><td style={{ padding: '12px', textAlign: 'right', border: '1px solid #ddd', fontWeight: 'bold' }}>{metrics.avgSyllables}</td></tr>
