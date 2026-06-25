@@ -114,7 +114,7 @@ export default function AdvancedTextAnalyzer() {
       avgSyllables: 0, readabilityScore: 0, readabilityLevel: '',
       bezirciScore: 0, bezirciLevel: '', fleschEase: 0, fleschGrade: 0,
       toneAnalysis: { formalityScore: 0, activePassiveRatio: 0, passiveCount: 0, emotionalTone: 'nötr', addressStyle: 'belirsiz' },
-      advancedAnalysis: { sentenceVariety: 0, transitionWords: 0, repeatedWords: [], conjunctionDiversity: 0 },
+      advancedAnalysis: { sentenceVariety: 0, transitionWords: 0, repeatedWords: [], conjunctionDiversity: 0, lengthDistribution: [], intensifiers: [], intensifierTotal: 0, repeatedOpeners: [] },
       seoScore: 0, platformScore: 0, engagementScore: 0, trustScore: 0
     };
   }
@@ -271,6 +271,51 @@ export default function AdvancedTextAnalyzer() {
     const lengthVariety = new Set(sentenceLengths.map((l) => Math.floor(l / 5))).size;
     const sentenceVariety = Math.min(10, (lengthVariety / 5) * 10);
 
+    // P1 #5 — Cümle uzunluğu dağılımı (ritim röntgeni)
+    const lengthBuckets = [
+      { label: '1-8', min: 1, max: 8 },
+      { label: '9-15', min: 9, max: 15 },
+      { label: '16-22', min: 16, max: 22 },
+      { label: '23-30', min: 23, max: 30 },
+      { label: '30+', min: 31, max: Infinity },
+    ];
+    const lengthDistribution = lengthBuckets.map((b) => ({
+      label: b.label,
+      count: sentenceLengths.filter((l) => l >= b.min && l <= b.max).length,
+    }));
+
+    // P1 #6a — Pekiştireç / zayıf zarf kullanımı
+    const intensifierList = ['çok', 'oldukça', 'gayet', 'son derece', 'büyük ölçüde', 'adeta',
+      'resmen', 'fazlasıyla', 'epey', 'hayli', 'aşırı', 'gerçekten', 'cidden', 'tamamen',
+      'kesinlikle', 'iyice', 'bir hayli', 'son derece', 'müthiş', 'muazzam'];
+    const lowerForIntensifiers = inputText.toLowerCase();
+    const tokenSet = words.map((w) => w.toLowerCase().replace(/[^a-zçğıöşüâîû]/g, ''));
+    const intensifierHits = {};
+    intensifierList.forEach((term) => {
+      const c = term.includes(' ')
+        ? lowerForIntensifiers.split(term).length - 1
+        : tokenSet.filter((t) => t === term).length;
+      if (c > 0) intensifierHits[term] = (intensifierHits[term] || 0) + c;
+    });
+    const intensifiers = Object.entries(intensifierHits).sort((a, b) => b[1] - a[1]).map(([word, count]) => ({ word, count }));
+    const intensifierTotal = intensifiers.reduce((s, i) => s + i.count, 0);
+
+    // P1 #6b — Tekrar eden cümle başları
+    const openerCounts = {};
+    const openerExample = {};
+    sentences.forEach((s) => {
+      const toks = s.trim().split(/\s+/);
+      const norm = (toks[0] || '').toLowerCase().replace(/[^a-zçğıöşüâîû]/g, '');
+      if (norm.length >= 2) {
+        openerCounts[norm] = (openerCounts[norm] || 0) + 1;
+        if (!openerExample[norm]) openerExample[norm] = toks.slice(0, 3).join(' ').replace(/["'"'']/g, '');
+      }
+    });
+    const repeatedOpeners = sentences.length >= 3
+      ? Object.entries(openerCounts).filter(([, c]) => c >= 2).sort((a, b) => b[1] - a[1]).slice(0, 4)
+          .map(([w, count]) => ({ phrase: openerExample[w], count }))
+      : [];
+
     const conjunctions = ['ve', 'veya', 've ya da', 'ile', 'ancak', 'fakat', 'ama', 'çünkü', 'zira'];
     const usedConjunctions = conjunctions.filter((c) => inputText.toLowerCase().includes(c));
     const conjunctionDiversity = (usedConjunctions.length / conjunctions.length * 10).toFixed(1);
@@ -292,7 +337,7 @@ export default function AdvancedTextAnalyzer() {
       readabilityScore, readabilityLevel,
       bezirciScore, bezirciLevel, fleschEase, fleschGrade,
       toneAnalysis: { formalityScore: Math.round(formalityScore), activePassiveRatio, passiveCount, emotionalTone, addressStyle },
-      advancedAnalysis: { sentenceVariety: sentenceVariety.toFixed(1), transitionWords: transitionCount, repeatedWords, conjunctionDiversity },
+      advancedAnalysis: { sentenceVariety: sentenceVariety.toFixed(1), transitionWords: transitionCount, repeatedWords, conjunctionDiversity, lengthDistribution, intensifiers, intensifierTotal, repeatedOpeners },
       seoScore, platformScore, engagementScore, trustScore
     };
   };
@@ -649,6 +694,8 @@ ${text}
     if (metrics.toneAnalysis.passiveCount > 2) suggestions.push(`${metrics.toneAnalysis.passiveCount} pasif yapı tespit edildi; aktif çatıya çevirerek anlatımı güçlendirin.`);
     if (metrics.advancedAnalysis.repeatedWords.length > 0) suggestions.push(`"${metrics.advancedAnalysis.repeatedWords[0].word}" kelimesi ${metrics.advancedAnalysis.repeatedWords[0].count} kez geçiyor; eş anlamlılarla çeşitlendirin.`);
     if (parseFloat(metrics.advancedAnalysis.sentenceVariety) < 4) suggestions.push('Cümle uzunlukları birbirine yakın; uzunluk çeşitliliği metni canlandırır.');
+    if (metrics.advancedAnalysis.intensifierTotal >= 3) suggestions.push(`${metrics.advancedAnalysis.intensifierTotal} pekiştireç/zayıf zarf var (örn. "${metrics.advancedAnalysis.intensifiers[0].word}"); daha güçlü kelimelerle değiştirin.`);
+    if (metrics.advancedAnalysis.repeatedOpeners && metrics.advancedAnalysis.repeatedOpeners.length > 0) suggestions.push(`${metrics.advancedAnalysis.repeatedOpeners[0].count} cümle "${metrics.advancedAnalysis.repeatedOpeners[0].phrase}…" ile başlıyor; açılışı çeşitlendirin.`);
     if (metrics.toneAnalysis.activePassiveRatio < 60) suggestions.push('Aktif cümle kullanımını artırarak yazınızı daha dinamik hale getirebilirsiniz.');
     if (metrics.advancedAnalysis.transitionWords < 2) suggestions.push('Geçiş ifadeleri ekleyerek cümleler arası akışı iyileştirebilirsiniz.');
     if (platform === 'twitter' && metrics.characters > 280) suggestions.push('Twitter için metin çok uzun. 280 karakteri geçmeyin.');
@@ -864,6 +911,61 @@ ${text}
                       <span key={idx} style={{ display: 'inline-block', backgroundColor: '#CE93D8', color: 'white', padding: '4px 8px', borderRadius: '4px', marginRight: '8px', marginBottom: '8px' }}>{item.word} ({item.count}x)</span>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {metrics.advancedAnalysis.lengthDistribution && metrics.advancedAnalysis.lengthDistribution.some((b) => b.count > 0) && (
+                <div style={{ marginTop: '18px', paddingTop: '18px', borderTop: '1px solid #E1BEE7' }}>
+                  <strong>Cümle Uzunluğu Dağılımı (ritim):</strong>
+                  <div style={{ marginTop: '10px' }}>
+                    {(() => {
+                      const dist = metrics.advancedAnalysis.lengthDistribution;
+                      const max = Math.max(...dist.map((b) => b.count), 1);
+                      return dist.map((b, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', marginBottom: '6px', fontSize: '13px' }}>
+                          <span style={{ width: '70px', color: '#666', flexShrink: 0 }}>{b.label} kelime</span>
+                          <div style={{ flex: 1, backgroundColor: '#F3E5F5', borderRadius: '4px', height: '20px', position: 'relative' }}>
+                            <div style={{ width: `${(b.count / max) * 100}%`, backgroundColor: b.label === '30+' && b.count > 0 ? '#E57373' : '#BA68C8', height: '100%', borderRadius: '4px', minWidth: b.count > 0 ? '3px' : '0', transition: 'width 0.3s' }} />
+                          </div>
+                          <span style={{ width: '28px', textAlign: 'right', color: '#555', flexShrink: 0 }}>{b.count}</span>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#999', marginTop: '6px', fontStyle: 'italic' }}>
+                    Tek kovada yığılma monotonluk, dağılım ritim demektir. Kırmızı (30+) cümleler bölünmeye adaydır.
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: '18px', paddingTop: '18px', borderTop: '1px solid #E1BEE7' }}>
+                <strong>Pekiştireç / Zayıf Zarf:</strong>{' '}
+                {metrics.advancedAnalysis.intensifierTotal > 0 ? (
+                  <>
+                    <span style={{ color: metrics.advancedAnalysis.intensifierTotal >= 4 ? '#E65100' : '#666' }}>{metrics.advancedAnalysis.intensifierTotal} adet</span>
+                    <div style={{ marginTop: '8px', fontSize: '14px' }}>
+                      {metrics.advancedAnalysis.intensifiers.map((item, idx) => (
+                        <span key={idx} style={{ display: 'inline-block', backgroundColor: '#FFE0B2', color: '#E65100', padding: '4px 8px', borderRadius: '4px', marginRight: '8px', marginBottom: '8px' }}>{item.word} ({item.count}x)</span>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#999', marginTop: '2px', fontStyle: 'italic' }}>Güçlü fiil/isim, zayıf sıfat+zarftan iyidir. Her şey "çok"sa hiçbir şey vurgulu değildir.</div>
+                  </>
+                ) : (
+                  <span style={{ color: '#2E7D32' }}>temiz ✅</span>
+                )}
+              </div>
+
+              {metrics.advancedAnalysis.repeatedOpeners && metrics.advancedAnalysis.repeatedOpeners.length > 0 && (
+                <div style={{ marginTop: '18px', paddingTop: '18px', borderTop: '1px solid #E1BEE7' }}>
+                  <strong>Tekrar Eden Cümle Başları:</strong>
+                  <div style={{ marginTop: '8px', fontSize: '14px' }}>
+                    {metrics.advancedAnalysis.repeatedOpeners.map((item, idx) => (
+                      <div key={idx} style={{ marginBottom: '4px', color: '#555' }}>
+                        <span style={{ color: '#7B1FA2', fontWeight: 'bold' }}>{item.count} cümle</span> "{item.phrase}…" ile başlıyor
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#999', marginTop: '6px', fontStyle: 'italic' }}>Aynı açılış metni durağanlaştırır; özneyi/açılışı çeşitlendirin.</div>
                 </div>
               )}
             </div>
