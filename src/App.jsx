@@ -119,22 +119,37 @@ export default function AdvancedTextAnalyzer() {
     };
   }
 
-  const splitSentences = (inputText) => {
-    if (!inputText.trim()) return [];
+  // Tek doğruluk kaynağı: cümle sonu olmayan noktaları (ondalık, sıra sayısı,
+  // kısaltma, üç nokta) eşit uzunlukta bir maske karakteriyle gizler, gerçek
+  // cümle sınırlarını bulur ve ORİJİNAL metni aynı konumlardan dilimler.
+  // Böylece hem analiz hem vurgulama aynı sınırları görür.
+  const segmentSentences = (inputText) => {
+    if (!inputText || !inputText.trim()) return [];
+    const MASK = '\u0001';
     let t = inputText;
-    t = t.replace(/(\d)\.(\d)/g, '$1<D>$2');
-    t = t.replace(/M\.Ö\./g, 'M<D>Ö<D>').replace(/M\.S\./g, 'M<D>S<D>');
-    t = t.replace(/\.{3,}/g, '<E>');
+    t = t.replace(/(\d)\.(\d)/g, (m, a, b) => a + MASK + b);            // ondalık: 20.30
+    t = t.replace(/(\d)\.(?=\s)/g, (m, a) => a + MASK);                 // sıra sayısı: 35. yıl
+    t = t.replace(/M\.Ö\./g, 'M' + MASK + 'Ö' + MASK).replace(/M\.S\./g, 'M' + MASK + 'S' + MASK);
+    t = t.replace(/\.{3,}/g, (m) => MASK.repeat(m.length));             // üç nokta
     const abbr = ['Dr', 'Prof', 'Doç', 'Av', 'Sn', 'vb', 'vs', 'Yrd', 'Uzm', 'No',
                   'Tel', 'Cad', 'Sok', 'Apt', 'bkz', 'age', 'çev', 'haz', 'Org',
                   'Gen', 'Müh', 'Op', 'St', 'Mah'];
     abbr.forEach((a) => {
-      t = t.replace(new RegExp(`(^|[\\s(])(${a})\\.`, 'g'), `$1$2<D>`);
+      t = t.replace(new RegExp(`(^|[\\s(])(${a})\\.`, 'g'), (m, p1, p2) => p1 + p2 + MASK);
     });
-    return t.split(/[.!?]+/)
-      .map((s) => s.replace(/<D>/g, '.').replace(/<E>/g, '...').trim())
-      .filter((s) => s.length > 0);
+    const segments = [];
+    const re = /[.!?]+/g;
+    let start = 0, m;
+    while ((m = re.exec(t)) !== null) {
+      const end = m.index + m[0].length;
+      segments.push(inputText.slice(start, end));
+      start = end;
+    }
+    if (start < inputText.length) segments.push(inputText.slice(start));
+    return segments.filter((s) => s.trim().length > 0);
   };
+
+  const splitSentences = (inputText) => segmentSentences(inputText).map((s) => s.trim());
 
   const analyzeText = (inputText) => {
     if (!inputText.trim()) return emptyMetricsObj();
@@ -229,18 +244,28 @@ export default function AdvancedTextAnalyzer() {
     const transitionCount = transitionWords.filter((w) => inputText.toLowerCase().includes(w)).length;
 
     const wordFrequency = {};
+    const surfaceForms = {};
     words.forEach((word) => {
       const raw = word.toLowerCase().replace(/[^a-zçğıöşü]/g, '');
       const stem = lightStem(word);
       if (stem.length > 3 && !turkishStopwords.has(stem) && !turkishStopwords.has(raw)) {
         wordFrequency[stem] = (wordFrequency[stem] || 0) + 1;
+        if (raw.length > 0) {
+          if (!surfaceForms[stem]) surfaceForms[stem] = {};
+          surfaceForms[stem][raw] = (surfaceForms[stem][raw] || 0) + 1;
+        }
       }
     });
     const repeatedWords = Object.entries(wordFrequency)
       .filter(([w, count]) => count > 2)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
-      .map(([w, count]) => ({ word: w, count }));
+      .map(([stem, count]) => {
+        // Kök yerine en sık geçen GERÇEK yüzey biçimini göster ("beledi" değil "belediye")
+        const forms = surfaceForms[stem] || {};
+        const best = Object.entries(forms).sort((a, b) => b[1] - a[1])[0];
+        return { word: best ? best[0] : stem, count };
+      });
 
     const sentenceLengths = sentences.map((s) => s.trim().split(/\s+/).length);
     const lengthVariety = new Set(sentenceLengths.map((l) => Math.floor(l / 5))).size;
@@ -460,8 +485,7 @@ ${text.slice(0, 2000)}
   const fillerWords = ['şey', 'biraz', 'gibi', 'falan', 'filan', 'yani', 'aslında', 'açıkçası', 'gerçekten', 'oldukça', 'sanki', 'hani', 'işte', 'valla', 'ya'];
 
   const renderHighlighted = (inputText) => {
-    const sentenceRegex = /[^.!?]+[.!?]*/g;
-    const matches = inputText.match(sentenceRegex) || [inputText];
+    const matches = segmentSentences(inputText);
     return matches.map((sentence, sIdx) => {
       const wc = sentence.trim().split(/\s+/).filter(Boolean).length;
       let bg = 'transparent';
@@ -486,8 +510,7 @@ ${text.slice(0, 2000)}
 
   const countHighlightIssues = (inputText) => {
     if (!inputText.trim()) return { longSentences: 0, passive: 0, filler: 0, total: 0 };
-    const sentenceRegex = /[^.!?]+[.!?]*/g;
-    const matches = inputText.match(sentenceRegex) || [inputText];
+    const matches = segmentSentences(inputText);
     let longSentences = 0, passive = 0, filler = 0;
     matches.forEach((sentence) => {
       const wc = sentence.trim().split(/\s+/).filter(Boolean).length;
@@ -624,7 +647,7 @@ ${text}
     if (parseFloat(metrics.avgSyllables) > 3) suggestions.push('Çok heceli kelimeler ağırlıkta; daha kısa ve yalın kelimeler okunabilirliği artırır.');
     if (metrics.bezirciLevel && (metrics.bezirciLevel.includes('Akademik') || metrics.bezirciLevel.includes('Lisans'))) suggestions.push(`Metin ${metrics.bezirciLevel} düzeyinde. Geniş kitleye sesleniyorsanız sadeleştirin.`);
     if (metrics.toneAnalysis.passiveCount > 2) suggestions.push(`${metrics.toneAnalysis.passiveCount} pasif yapı tespit edildi; aktif çatıya çevirerek anlatımı güçlendirin.`);
-    if (metrics.advancedAnalysis.repeatedWords.length > 0) suggestions.push(`"${metrics.advancedAnalysis.repeatedWords[0].word}" kökü ${metrics.advancedAnalysis.repeatedWords[0].count} kez geçiyor; eş anlamlılarla çeşitlendirin.`);
+    if (metrics.advancedAnalysis.repeatedWords.length > 0) suggestions.push(`"${metrics.advancedAnalysis.repeatedWords[0].word}" kelimesi ${metrics.advancedAnalysis.repeatedWords[0].count} kez geçiyor; eş anlamlılarla çeşitlendirin.`);
     if (parseFloat(metrics.advancedAnalysis.sentenceVariety) < 4) suggestions.push('Cümle uzunlukları birbirine yakın; uzunluk çeşitliliği metni canlandırır.');
     if (metrics.toneAnalysis.activePassiveRatio < 60) suggestions.push('Aktif cümle kullanımını artırarak yazınızı daha dinamik hale getirebilirsiniz.');
     if (metrics.advancedAnalysis.transitionWords < 2) suggestions.push('Geçiş ifadeleri ekleyerek cümleler arası akışı iyileştirebilirsiniz.');
@@ -835,7 +858,7 @@ ${text}
               <div style={{ marginBottom: '10px' }}><strong>Bağlaç Çeşitliliği:</strong> {metrics.advancedAnalysis.conjunctionDiversity}/10</div>
               {metrics.advancedAnalysis.repeatedWords.length > 0 && (
                 <div>
-                  <strong>Çok Tekrar Eden Kökler:</strong>
+                  <strong>Çok Tekrar Eden Kelimeler:</strong>
                   <div style={{ marginTop: '8px', fontSize: '14px' }}>
                     {metrics.advancedAnalysis.repeatedWords.map((item, idx) => (
                       <span key={idx} style={{ display: 'inline-block', backgroundColor: '#CE93D8', color: 'white', padding: '4px 8px', borderRadius: '4px', marginRight: '8px', marginBottom: '8px' }}>{item.word} ({item.count}x)</span>
