@@ -719,7 +719,7 @@ ${text}
             <div key={plt} style={{ backgroundColor: '#F5F5F5', padding: '20px', borderRadius: '8px', border: `2px solid ${platforms[plt].color}` }}>
               <div style={{ fontSize: '32px', textAlign: 'center', marginBottom: '10px' }}>{platforms[plt].icon}</div>
               <h3 style={{ textAlign: 'center', color: platforms[plt].color, marginBottom: '15px' }}>{platforms[plt].name}</h3>
-              <div style={{ backgroundColor: getScoreColor(pltScore), color: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ backgroundColor: getScoreColor(pltScore), color: '#1A1A1A', padding: '15px', borderRadius: '8px', textAlign: 'center' }}>
                 <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{pltScore}</div>
                 <div style={{ fontSize: '14px' }}>Uygunluk Skoru</div>
               </div>
@@ -737,7 +737,16 @@ ${text}
 
   return (
     <div className="yaz-analiz" style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px', fontFamily: "'Montserrat', sans-serif" }}>
-      <style>{`.yaz-analiz, .yaz-analiz * { font-family: 'Montserrat', sans-serif; }`}</style>
+      <style>{`
+        .yaz-analiz, .yaz-analiz * { font-family: 'Montserrat', sans-serif; }
+        .yaz-analiz button:focus-visible, .yaz-analiz select:focus-visible, .yaz-analiz textarea:focus-visible {
+          outline: 3px solid #1565C0; outline-offset: 2px;
+        }
+        @media (max-width: 768px) {
+          .yaz-analiz .ya-grid-collapse { grid-template-columns: 1fr !important; }
+          .yaz-analiz .ya-dashboard { position: static !important; }
+        }
+      `}</style>
       <h1 style={{ textAlign: 'center', color: '#333', marginBottom: '30px' }}>Gelişmiş Yazı Analiz Aracı</h1>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px', backgroundColor: '#F5F5F5', padding: '20px', borderRadius: '8px' }}>
@@ -823,13 +832,13 @@ ${text}
       )}
 
       {text.trim() && !showComparison && (
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
+        <div className="ya-grid-collapse" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
           <div style={{ backgroundColor: '#FFFFFF', padding: '25px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
             <h2 style={{ color: '#333', marginBottom: '20px' }}>{platforms[platform].icon} {platforms[platform].name} - Analiz Sonuçları</h2>
 
             {language === 'tr' ? (
               <div style={{ marginBottom: '25px' }}>
-                <div style={{ backgroundColor: getScoreColor(metrics.readabilityScore), color: 'white', padding: '25px', borderRadius: '8px 8px 0 0', textAlign: 'center' }}>
+                <div style={{ backgroundColor: getScoreColor(metrics.readabilityScore), color: '#1A1A1A', padding: '25px', borderRadius: '8px 8px 0 0', textAlign: 'center' }}>
                   <div style={{ fontSize: '48px', fontWeight: 'bold', marginBottom: '5px' }}>{metrics.readabilityScore}<span style={{ fontSize: '20px', opacity: 0.85 }}> / 100</span></div>
                   <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{metrics.readabilityLevel}</div>
                   <div style={{ fontSize: '13px', marginTop: '10px', opacity: 0.9 }}>Ateşman Okunabilirlik Skoru</div>
@@ -844,7 +853,7 @@ ${text}
               </div>
             ) : (
               <div style={{ marginBottom: '25px' }}>
-                <div style={{ backgroundColor: getScoreColor(Math.max(0, Math.min(100, metrics.fleschEase))), color: 'white', padding: '25px', borderRadius: '8px 8px 0 0', textAlign: 'center' }}>
+                <div style={{ backgroundColor: getScoreColor(Math.max(0, Math.min(100, metrics.fleschEase))), color: '#1A1A1A', padding: '25px', borderRadius: '8px 8px 0 0', textAlign: 'center' }}>
                   <div style={{ fontSize: '48px', fontWeight: 'bold', marginBottom: '5px' }}>{metrics.fleschEase}</div>
                   <div style={{ fontSize: '16px', fontWeight: 'bold' }}>Flesch Reading Ease</div>
                   <div style={{ fontSize: '13px', marginTop: '6px', opacity: 0.9 }}>0–100 (yüksek = kolay)</div>
@@ -878,14 +887,14 @@ ${text}
 
             <div style={{ backgroundColor: '#E3F2FD', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
               <h3 style={{ color: '#1976D2', marginTop: 0, marginBottom: '15px' }}>🎭 Ton ve Üslup Analizi</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+              <div className="ya-grid-collapse" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                 <div>
                   <strong>Formalite:</strong>
-                  <div style={{ backgroundColor: getScoreColor(metrics.toneAnalysis.formalityScore), color: 'white', padding: '8px', borderRadius: '4px', marginTop: '5px', textAlign: 'center' }}>{metrics.toneAnalysis.formalityScore >= 60 ? 'Formal' : metrics.toneAnalysis.formalityScore < 40 ? 'İnformal' : 'Nötr'} ({metrics.toneAnalysis.formalityScore}%)</div>
+                  <div style={{ backgroundColor: getScoreColor(metrics.toneAnalysis.formalityScore), color: '#1A1A1A', padding: '8px', borderRadius: '4px', marginTop: '5px', textAlign: 'center' }}>{metrics.toneAnalysis.formalityScore >= 60 ? 'Formal' : metrics.toneAnalysis.formalityScore < 40 ? 'İnformal' : 'Nötr'} ({metrics.toneAnalysis.formalityScore}%)</div>
                 </div>
                 <div>
                   <strong>Aktif Cümle Oranı:</strong>
-                  <div style={{ backgroundColor: getScoreColor(metrics.toneAnalysis.activePassiveRatio), color: 'white', padding: '8px', borderRadius: '4px', marginTop: '5px', textAlign: 'center' }}>%{metrics.toneAnalysis.activePassiveRatio} <span style={{ fontSize: '11px', opacity: 0.85 }}>({metrics.toneAnalysis.passiveCount} pasif)</span></div>
+                  <div style={{ backgroundColor: getScoreColor(metrics.toneAnalysis.activePassiveRatio), color: '#1A1A1A', padding: '8px', borderRadius: '4px', marginTop: '5px', textAlign: 'center' }}>%{metrics.toneAnalysis.activePassiveRatio} <span style={{ fontSize: '11px', opacity: 0.85 }}>({metrics.toneAnalysis.passiveCount} pasif)</span></div>
                 </div>
                 <div>
                   <strong>Duygusal Ton:</strong>
@@ -932,7 +941,7 @@ ${text}
                       ));
                     })()}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#999', marginTop: '6px', fontStyle: 'italic' }}>
+                  <div style={{ fontSize: '11px', color: '#616161', marginTop: '6px', fontStyle: 'italic' }}>
                     Tek kovada yığılma monotonluk, dağılım ritim demektir. Kırmızı (30+) cümleler bölünmeye adaydır.
                   </div>
                 </div>
@@ -948,7 +957,7 @@ ${text}
                         <span key={idx} style={{ display: 'inline-block', backgroundColor: '#FFE0B2', color: '#E65100', padding: '4px 8px', borderRadius: '4px', marginRight: '8px', marginBottom: '8px' }}>{item.word} ({item.count}x)</span>
                       ))}
                     </div>
-                    <div style={{ fontSize: '11px', color: '#999', marginTop: '2px', fontStyle: 'italic' }}>Güçlü fiil/isim, zayıf sıfat+zarftan iyidir. Her şey "çok"sa hiçbir şey vurgulu değildir.</div>
+                    <div style={{ fontSize: '11px', color: '#616161', marginTop: '2px', fontStyle: 'italic' }}>Güçlü fiil/isim, zayıf sıfat+zarftan iyidir. Her şey "çok"sa hiçbir şey vurgulu değildir.</div>
                   </>
                 ) : (
                   <span style={{ color: '#2E7D32' }}>temiz ✅</span>
@@ -965,7 +974,7 @@ ${text}
                       </div>
                     ))}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#999', marginTop: '6px', fontStyle: 'italic' }}>Aynı açılış metni durağanlaştırır; özneyi/açılışı çeşitlendirin.</div>
+                  <div style={{ fontSize: '11px', color: '#616161', marginTop: '6px', fontStyle: 'italic' }}>Aynı açılış metni durağanlaştırır; özneyi/açılışı çeşitlendirin.</div>
                 </div>
               )}
             </div>
@@ -1019,7 +1028,7 @@ ${text}
           </div>
 
           <div>
-            <div style={{ backgroundColor: '#FFFFFF', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', position: 'sticky', top: '20px' }}>
+            <div className="ya-dashboard" style={{ backgroundColor: '#FFFFFF', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', position: 'sticky', top: '20px' }}>
               <h3 style={{ color: '#333', marginTop: 0, marginBottom: '20px', textAlign: 'center' }}>📊 Performans Dashboard</h3>
               {[
                 { label: 'SEO Skoru', val: metrics.seoScore, estimated: false },
@@ -1031,16 +1040,16 @@ ${text}
                   <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
                     <span>{m.label}</span>
                     {m.estimated && (
-                      <span style={{ fontSize: '10px', color: '#9E9E9E', backgroundColor: '#F0F0F0', padding: '1px 7px', borderRadius: '8px', fontStyle: 'italic', flexShrink: 0 }}>tahmini</span>
+                      <span style={{ fontSize: '10px', color: '#616161', backgroundColor: '#F0F0F0', padding: '1px 7px', borderRadius: '8px', fontStyle: 'italic', flexShrink: 0 }}>tahmini</span>
                     )}
                   </div>
-                  <div style={{ backgroundColor: getScoreColor(m.val), color: 'white', padding: m.estimated ? '12px' : '15px', borderRadius: '8px', textAlign: 'center', opacity: m.estimated ? 0.55 : 1 }}>
+                  <div style={{ backgroundColor: getScoreColor(m.val), color: '#1A1A1A', padding: m.estimated ? '12px' : '15px', borderRadius: '8px', textAlign: 'center', opacity: m.estimated ? 0.55 : 1 }}>
                     <div style={{ fontSize: m.estimated ? '30px' : '36px', fontWeight: 'bold' }}>{m.val}</div>
                     <div style={{ fontSize: '12px' }}>/ 100</div>
                   </div>
                 </div>
               ))}
-              <div style={{ marginTop: '15px', fontSize: '11px', color: '#999', textAlign: 'center', fontStyle: 'italic' }}>
+              <div style={{ marginTop: '15px', fontSize: '11px', color: '#616161', textAlign: 'center', fontStyle: 'italic' }}>
                 "Tahmini" etiketli skorlar (platform, engagement, güven) sezgisel kestirimlerdir; ampirik veriyle kalibre edilmemiştir. SEO skoru kural tabanlıdır.
               </div>
             </div>
@@ -1051,11 +1060,11 @@ ${text}
       {showComparison && improvedMetrics && (
         <div style={{ backgroundColor: '#FFFFFF', padding: '25px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
           <h2 style={{ color: '#333', marginBottom: '20px' }}>Önce/Sonra Karşılaştırması</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+          <div className="ya-grid-collapse" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
             <div>
               <h3 style={{ color: '#666', marginBottom: '15px', fontSize: '18px' }}>Orijinal Metin</h3>
               <div style={{ backgroundColor: '#FFF3E0', padding: '15px', borderRadius: '8px', minHeight: '200px', maxHeight: '400px', overflowY: 'auto', fontSize: '14px', lineHeight: '1.6', border: '2px solid #FFB74D', whiteSpace: 'pre-wrap' }}>{text}</div>
-              <div style={{ backgroundColor: getScoreColor(metrics.readabilityScore), color: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center', marginTop: '15px' }}>
+              <div style={{ backgroundColor: getScoreColor(metrics.readabilityScore), color: '#1A1A1A', padding: '15px', borderRadius: '8px', textAlign: 'center', marginTop: '15px' }}>
                 <div style={{ fontSize: '32px', fontWeight: 'bold' }}>{metrics.readabilityScore}</div>
                 <div style={{ fontSize: '16px' }}>{metrics.readabilityLevel}</div>
               </div>
@@ -1063,7 +1072,7 @@ ${text}
             <div>
               <h3 style={{ color: '#666', marginBottom: '15px', fontSize: '18px' }}>Geliştirilmiş Metin</h3>
               <div style={{ backgroundColor: '#E8F5E9', padding: '15px', borderRadius: '8px', minHeight: '200px', maxHeight: '400px', overflowY: 'auto', fontSize: '14px', lineHeight: '1.6', border: '2px solid #66BB6A', whiteSpace: 'pre-wrap' }}>{improvedText}</div>
-              <div style={{ backgroundColor: getScoreColor(improvedMetrics.readabilityScore), color: 'white', padding: '15px', borderRadius: '8px', textAlign: 'center', marginTop: '15px' }}>
+              <div style={{ backgroundColor: getScoreColor(improvedMetrics.readabilityScore), color: '#1A1A1A', padding: '15px', borderRadius: '8px', textAlign: 'center', marginTop: '15px' }}>
                 <div style={{ fontSize: '32px', fontWeight: 'bold' }}>{improvedMetrics.readabilityScore}</div>
                 <div style={{ fontSize: '16px' }}>{improvedMetrics.readabilityLevel}</div>
                 <div style={{ fontSize: '12px', marginTop: '8px', opacity: 0.9 }}>{(improvedMetrics.readabilityScore - metrics.readabilityScore > 0 ? '+' : '')}{improvedMetrics.readabilityScore - metrics.readabilityScore} puan</div>
