@@ -168,6 +168,23 @@ export default function AdvancedTextAnalyzer() {
     return { len, unicode, single, segments };
   };
 
+  // Tipografik farklara toleranslı eşleştirme (kıvrık↔düz tırnak, kesme, tire, NBSP).
+  // Uzunluğu KORUR (1:1 karakter değişimi) → bulunan index orijinal metinle hizalı kalır.
+  const normForMatch = (s) => (s || '')
+    .replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB]/g, '"')   // çift tırnak çeşitleri → "
+    .replace(/[\u2018\u2019\u201A\u201B\u2032\u00B4`]/g, "'")  // tek tırnak / kesme işareti → '
+    .replace(/[\u2013\u2014\u2015]/g, '-')                      // en/em tire → -
+    .replace(/\u00A0/g, ' ');                                   // bölünmez boşluk → normal boşluk
+
+  // Önce birebir, bulunamazsa tipografik-normalize edilmiş halde arar. Sonuç: {idx, len} veya idx=-1.
+  const findFlexible = (haystack, needle) => {
+    if (!needle) return { idx: -1, len: 0 };
+    let i = haystack.indexOf(needle);
+    if (i !== -1) return { idx: i, len: needle.length };
+    i = normForMatch(haystack).indexOf(normForMatch(needle));
+    return { idx: i, len: needle.length }; // uzunluk korunduğu için aynı slice geçerli
+  };
+
   const analyzeText = (inputText) => {
     if (!inputText.trim()) return emptyMetricsObj();
 
@@ -761,9 +778,9 @@ ${text}
       const end = raw.lastIndexOf(']');
       if (start === -1 || end === -1) throw new Error('Geçersiz yanıt');
       const parsed = JSON.parse(raw.slice(start, end + 1));
-      // Yalnızca metinde gerçekten bulunan hataları tut (yanlış konuma uygulama riskini elemek için)
+      // Yalnızca metinde bulunabilen hataları tut (tipografik farka toleranslı; yanlış konuma uygulamayı önler)
       const valid = (Array.isArray(parsed) ? parsed : []).filter(
-        (it) => it && it.hatali && it.dogrusu && text.includes(it.hatali)
+        (it) => it && it.hatali && it.dogrusu && findFlexible(text, it.hatali).idx !== -1
       );
       setGrammarIssues(valid);
       setGrammarChecked(true);
@@ -776,13 +793,13 @@ ${text}
   };
 
   const applyGrammarFix = (issue) => {
-    if (!text.includes(issue.hatali)) {
+    const loc = findFlexible(text, issue.hatali);
+    if (loc.idx === -1) {
       // metin değişmiş, artık bulunamıyor → listeden düşür
       setGrammarIssues((prev) => prev.filter((it) => it !== issue));
       return;
     }
-    const idx = text.indexOf(issue.hatali);
-    const next = text.slice(0, idx) + issue.dogrusu + text.slice(idx + issue.hatali.length);
+    const next = text.slice(0, loc.idx) + issue.dogrusu + text.slice(loc.idx + loc.len);
     setText(next);
     setGrammarIssues((prev) => prev.filter((it) => it !== issue));
   };
@@ -790,9 +807,9 @@ ${text}
   const applyAllGrammarFixes = () => {
     let next = text;
     grammarIssues.forEach((issue) => {
-      if (next.includes(issue.hatali)) {
-        const idx = next.indexOf(issue.hatali);
-        next = next.slice(0, idx) + issue.dogrusu + next.slice(idx + issue.hatali.length);
+      const loc = findFlexible(next, issue.hatali);
+      if (loc.idx !== -1) {
+        next = next.slice(0, loc.idx) + issue.dogrusu + next.slice(loc.idx + loc.len);
       }
     });
     setText(next);
