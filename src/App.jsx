@@ -16,6 +16,10 @@ export default function AdvancedTextAnalyzer() {
   const [suggestionsSource, setSuggestionsSource] = useState('template');
   const [aiGenerating, setAiGenerating] = useState(false);
   const [showHighlight, setShowHighlight] = useState(false);
+  const [grammarChecking, setGrammarChecking] = useState(false);
+  const [grammarIssues, setGrammarIssues] = useState([]);
+  const [grammarChecked, setGrammarChecked] = useState(false);
+  const [grammarError, setGrammarError] = useState('');
 
   const [metrics, setMetrics] = useState(emptyMetricsObj());
   const [improvedMetrics, setImprovedMetrics] = useState(null);
@@ -614,6 +618,9 @@ ${text.slice(0, 2000)}
     setImproveError('');
     setIsImproving(false);
     setSuggestionsSource('template');
+    setGrammarIssues([]);
+    setGrammarChecked(false);
+    setGrammarError('');
   };
 
   const improveReadability = async () => {
@@ -700,6 +707,96 @@ ${text}
     setShowComparison(false);
     setImprovedText('');
     setImprovedMetrics(null);
+  };
+
+  // === Commit B: Yazım & Dilbilgisi Denetimi (LLM tabanlı, precision öncelikli) ===
+  const checkGrammar = async () => {
+    if (!text.trim()) return;
+    setGrammarChecking(true);
+    setGrammarError('');
+    setGrammarIssues([]);
+    setGrammarChecked(false);
+
+    const prompt = `Sen titiz bir Türkçe dil editörüsün. Görevin: aşağıdaki metinde YALNIZCA NESNEL yazım, dilbilgisi ve noktalama hatalarını bulmak.
+
+EN ÖNEMLİ İLKE — KESİNLİK (PRECISION) ÖNCELİKLİDİR:
+- Emin olmadığın hiçbir şeyi işaretleme. Şüpheliyse ATLA. Yanlış pozitif vermek, bir hatayı kaçırmaktan daha kötüdür.
+- Bu bir ÜSLUP veya İYİLEŞTİRME aracı DEĞİLDİR. Daha güzel/akıcı öneriler SUNMA. Sadece açık, nesnel HATALARI bul.
+
+ASLA DOKUNMA (bunları hata sayma):
+- Özel adlar ve kurum adları (Haldun Taner, Lefkoşa, Girne, Tiyatrokare vb.)
+- Kısaltmalar (YDÜ, AKKM, LBT, K.T., LTB, A.Ş. vb.)
+- Tırnak içindeki eser/oyun adları ("Gözlerimi Kaparım Vazifemi Yaparım", "Ahududu" vb.)
+- Yabancı kelimeler, markalar, web adresleri, e-posta adresleri
+- Üslup tercihleri, eş anlamlı sözcük önerileri, cümle yeniden kurma
+
+HATA TÜRLERİ (yalnızca bunlar):
+- "yazım": yanlış yazılmış kelime (ör. "hafızasızda" → "hafızasında", "yalnış" → "yanlış")
+- "dilbilgisi": ek/çekim/uyum hatası (ör. özne-yüklem uyumsuzluğu, yanlış ek)
+- "noktalama": eksik/yanlış noktalama, boşluk hatası (ör. virgülden sonra boşluk yok)
+
+ÇIKTI BİÇİMİ — SADECE geçerli JSON dizisi döndür, başka HİÇBİR şey yazma (markdown, açıklama, ön söz YOK):
+[
+  {"hatali": "metindeki yanlış parça (yeterli bağlamla, birebir kopya)", "dogrusu": "düzeltilmiş hali", "tur": "yazım|dilbilgisi|noktalama", "aciklama": "kuralı öğreten tek cümlelik kısa açıklama"}
+]
+
+ÖNEMLİ: "hatali" alanı, metinde GEÇTİĞİ GİBİ birebir olmalı (kelimesi kelimesine) ki düzeltme doğru yere uygulanabilsin. Tek kelimelik hatalarda bile, gerekiyorsa ayırt edici 2-3 kelimelik bağlam ekle.
+Hata yoksa boş dizi döndür: []
+
+DENETLENECEK METİN:
+"""
+${text}
+"""`;
+
+    try {
+      const response = await fetch("/api/anthropic", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }] })
+      });
+      const data = await response.json();
+      let raw = data.content.filter((item) => item.type === "text").map((item) => item.text).join("\n").trim();
+      raw = raw.replace(/^```[a-zçğıöşü]*\n?|\n?```$/gi, '').trim();
+      const start = raw.indexOf('[');
+      const end = raw.lastIndexOf(']');
+      if (start === -1 || end === -1) throw new Error('Geçersiz yanıt');
+      const parsed = JSON.parse(raw.slice(start, end + 1));
+      // Yalnızca metinde gerçekten bulunan hataları tut (yanlış konuma uygulama riskini elemek için)
+      const valid = (Array.isArray(parsed) ? parsed : []).filter(
+        (it) => it && it.hatali && it.dogrusu && text.includes(it.hatali)
+      );
+      setGrammarIssues(valid);
+      setGrammarChecked(true);
+    } catch (err) {
+      console.error('Denetim hatası:', err);
+      setGrammarError('Denetim sırasında bir sorun oluştu. Lütfen tekrar deneyin.');
+    } finally {
+      setGrammarChecking(false);
+    }
+  };
+
+  const applyGrammarFix = (issue) => {
+    if (!text.includes(issue.hatali)) {
+      // metin değişmiş, artık bulunamıyor → listeden düşür
+      setGrammarIssues((prev) => prev.filter((it) => it !== issue));
+      return;
+    }
+    const idx = text.indexOf(issue.hatali);
+    const next = text.slice(0, idx) + issue.dogrusu + text.slice(idx + issue.hatali.length);
+    setText(next);
+    setGrammarIssues((prev) => prev.filter((it) => it !== issue));
+  };
+
+  const applyAllGrammarFixes = () => {
+    let next = text;
+    grammarIssues.forEach((issue) => {
+      if (next.includes(issue.hatali)) {
+        const idx = next.indexOf(issue.hatali);
+        next = next.slice(0, idx) + issue.dogrusu + next.slice(idx + issue.hatali.length);
+      }
+    });
+    setText(next);
+    setGrammarIssues([]);
   };
 
   const getScoreColor = (score) => {
@@ -838,6 +935,9 @@ ${text}
             <button onClick={() => setCompareMode(!compareMode)} style={{ padding: '12px 30px', fontSize: '16px', backgroundColor: compareMode ? '#9E9E9E' : '#2196F3', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
               {compareMode ? 'Karşılaştırmayı Kapat' : 'Platform Karşılaştır'}
             </button>
+            <button onClick={checkGrammar} disabled={grammarChecking} style={{ padding: '12px 30px', fontSize: '16px', backgroundColor: grammarChecking ? '#CE93D8' : '#8E24AA', color: 'white', border: 'none', borderRadius: '8px', cursor: grammarChecking ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+              {grammarChecking ? '🔍 Denetleniyor...' : '🔍 Yazım & Dilbilgisi Denetle'}
+            </button>
           </>
         )}
       </div>
@@ -845,6 +945,63 @@ ${text}
       {improveError && (
         <div style={{ backgroundColor: '#FFEBEE', color: '#C62828', padding: '15px', borderRadius: '8px', marginBottom: '20px', textAlign: 'center', border: '1px solid #EF9A9A' }}>⚠️ {improveError}</div>
       )}
+
+      {grammarError && (
+        <div style={{ backgroundColor: '#FFEBEE', color: '#C62828', padding: '15px', borderRadius: '8px', marginBottom: '20px', textAlign: 'center', border: '1px solid #EF9A9A' }}>⚠️ {grammarError}</div>
+      )}
+
+      {grammarChecked && text.trim() && (() => {
+        const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+        const density = wordCount > 0 ? ((grammarIssues.length / wordCount) * 100).toFixed(1) : '0';
+        const turColors = { 'yazım': '#E53935', 'dilbilgisi': '#1E88E5', 'noktalama': '#F9A825' };
+        const turLabels = { 'yazım': 'Yazım', 'dilbilgisi': 'Dilbilgisi', 'noktalama': 'Noktalama' };
+        return (
+          <div style={{ backgroundColor: '#FFFFFF', padding: '25px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px', border: '2px solid #CE93D8' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '18px' }}>
+              <h2 style={{ color: '#6A1B9A', margin: 0 }}>🔍 Yazım & Dilbilgisi Denetimi
+                <span style={{ fontSize: '12px', backgroundColor: '#9E9E9E', color: 'white', padding: '2px 8px', borderRadius: '10px', marginLeft: '10px', verticalAlign: 'middle' }}>beta</span>
+              </h2>
+              {grammarIssues.length > 0 && (
+                <button onClick={applyAllGrammarFixes} style={{ padding: '8px 18px', fontSize: '14px', backgroundColor: '#8E24AA', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Tümünü Uygula ({grammarIssues.length})</button>
+              )}
+            </div>
+
+            {grammarIssues.length === 0 ? (
+              <div style={{ backgroundColor: '#E8F5E9', color: '#2E7D32', padding: '16px 18px', borderRadius: '8px', fontSize: '15px', border: '1px solid #A5D6A7', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '20px' }}>✅</span>
+                <span>Açık bir yazım, dilbilgisi veya noktalama hatası bulunamadı. (Araç yalnızca yüksek kesinlikteki hataları gösterir; üslup önerileri için "Okunabilirliği Artır"ı kullanın.)</span>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: '13px', color: '#616161', marginBottom: '16px' }}>
+                  <strong>{grammarIssues.length}</strong> olası hata · yoğunluk: <strong>{density}</strong> hata/100 kelime
+                  <span style={{ display: 'block', marginTop: '4px', fontStyle: 'italic' }}>Her öneriyi kontrol edip uygulayın; araç emin olmadığı yerleri atlar, yine de gözden geçirin.</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {grammarIssues.map((issue, i) => (
+                    <div key={i} style={{ border: '1px solid #E0E0E0', borderRadius: '8px', padding: '14px 16px', backgroundColor: '#FAFAFA' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+                        <div style={{ flex: 1, minWidth: '220px' }}>
+                          <div style={{ marginBottom: '6px', fontSize: '15px' }}>
+                            <span style={{ backgroundColor: '#FFCDD2', color: '#B71C1C', padding: '2px 6px', borderRadius: '4px', textDecoration: 'line-through' }}>{issue.hatali}</span>
+                            <span style={{ margin: '0 8px', color: '#9E9E9E' }}>→</span>
+                            <span style={{ backgroundColor: '#C8E6C9', color: '#1B5E20', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>{issue.dogrusu}</span>
+                          </div>
+                          {issue.aciklama && <div style={{ fontSize: '13px', color: '#616161' }}>{issue.aciklama}</div>}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', backgroundColor: turColors[issue.tur] || '#757575', color: 'white', padding: '2px 8px', borderRadius: '10px', whiteSpace: 'nowrap' }}>{turLabels[issue.tur] || 'Diğer'}</span>
+                          <button onClick={() => applyGrammarFix(issue)} style={{ padding: '6px 16px', fontSize: '13px', backgroundColor: '#8E24AA', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Uygula</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {compareMode && text.trim() && renderComparePlatforms()}
 
