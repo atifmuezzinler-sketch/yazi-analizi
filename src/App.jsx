@@ -789,6 +789,13 @@ ${text}
     setImprovedMetrics(null);
   };
 
+  // Mecra/kitle/ton değişince eski önce-sonra karşılaştırmasını geçersiz kıl
+  const resetComparison = () => {
+    setShowComparison(false);
+    setImprovedText('');
+    setImprovedMetrics(null);
+  };
+
   // === Commit B: Yazım & Dilbilgisi Denetimi (LLM tabanlı, precision öncelikli) ===
   const checkGrammar = async () => {
     if (!text.trim()) return;
@@ -968,30 +975,34 @@ ${text}
           .yaz-analiz .ya-grid-collapse { grid-template-columns: 1fr !important; }
           .yaz-analiz .ya-dashboard { position: static !important; }
         }
+        @keyframes ya-spin { to { transform: rotate(360deg); } }
+        .ya-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: ya-spin 0.7s linear infinite; vertical-align: middle; }
+        @keyframes ya-pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+        .ya-pulse { animation: ya-pulse 1.2s ease-in-out infinite; }
       `}</style>
       <h1 style={{ textAlign: 'center', color: '#333', marginBottom: '30px' }}>Gelişmiş Yazı Analiz Aracı</h1>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px', backgroundColor: '#F5F5F5', padding: '20px', borderRadius: '8px' }}>
         <div>
           <label style={labelStyle}>📱 Platform</label>
-          <select value={platform} onChange={(e) => setPlatform(e.target.value)} style={selStyle}>
+          <select value={platform} onChange={(e) => { setPlatform(e.target.value); resetComparison(); }} style={selStyle}>
             {Object.entries(platforms).map(([key, val]) => (<option key={key} value={key}>{val.icon} {val.name}</option>))}
           </select>
         </div>
         <div>
           <label style={labelStyle}>👥 Hedef Kitle</label>
-          <select value={audienceType} onChange={(e) => setAudienceType(e.target.value)} style={selStyle}>
+          <select value={audienceType} onChange={(e) => { setAudienceType(e.target.value); resetComparison(); }} style={selStyle}>
             {Object.entries(audienceTypes).map(([key, val]) => (<option key={key} value={key}>{val.icon} {val.name}</option>))}
           </select>
           {audienceType === 'spesifik' && (
-            <input type="text" value={specificAudience} onChange={(e) => setSpecificAudience(e.target.value)}
+            <input type="text" value={specificAudience} onChange={(e) => { setSpecificAudience(e.target.value); resetComparison(); }}
               placeholder="Kitlenizi tanımlayın (örn: 50+ yaş KKTC seçmeni, genç girişimciler, akademisyenler)"
               style={{ width: '100%', marginTop: '8px', padding: '10px', fontSize: '14px', border: '1px solid #ddd', borderRadius: '8px', boxSizing: 'border-box' }} />
           )}
         </div>
         <div>
           <label style={labelStyle}>🎭 Ton</label>
-          <select value={toneStyle} onChange={(e) => setToneStyle(e.target.value)} style={selStyle}>
+          <select value={toneStyle} onChange={(e) => { setToneStyle(e.target.value); resetComparison(); }} style={selStyle}>
             {Object.entries(toneStyles).map(([key, val]) => (<option key={key} value={key}>{val.icon} {val.name}</option>))}
           </select>
         </div>
@@ -1025,7 +1036,13 @@ ${text}
         {text.trim() && !showComparison && (
           <>
             <button onClick={improveReadability} disabled={isImproving} style={{ padding: '12px 30px', fontSize: '16px', backgroundColor: isImproving ? '#A5D6A7' : '#4CAF50', color: 'white', border: 'none', borderRadius: '8px', cursor: isImproving ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-              {isImproving ? '✨ İşleniyor...' : ({
+              {isImproving ? (<><span className="ya-spinner" /> {({
+                genel: 'İyileştiriliyor…',
+                gazete: 'Gazete diline çevriliyor…',
+                instagram: 'Instagram’a uyarlanıyor…',
+                facebook: 'Facebook’a uyarlanıyor…',
+                sms: 'SMS’e sığdırılıyor…',
+              }[platform] || 'İşleniyor…')}</>) : ({
                 genel: '✨ Okunabilirliği Artır (AI)',
                 gazete: '📰 Gazete Diline Çevir (AI)',
                 instagram: '📸 Instagram’a Uyarla (AI)',
@@ -1042,6 +1059,26 @@ ${text}
           </>
         )}
       </div>
+
+      {isImproving && (
+        <div style={{ backgroundColor: '#FFFFFF', padding: '30px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px', border: '2px dashed #C5E1A5', textAlign: 'center' }}>
+          <div style={{ fontSize: '15px', color: '#33691E', fontWeight: 'bold', marginBottom: '16px' }}>
+            <span className="ya-spinner" style={{ borderColor: 'rgba(76,175,80,0.3)', borderTopColor: '#4CAF50' }} /> {({
+              genel: 'Metin iyileştiriliyor…',
+              gazete: 'Metin gazete diline çevriliyor…',
+              instagram: 'Metin Instagram’a uyarlanıyor…',
+              facebook: 'Metin Facebook’a uyarlanıyor…',
+              sms: 'Metin SMS’e sığdırılıyor…',
+            }[platform] || 'Metin işleniyor…')}
+          </div>
+          <div className="ya-pulse" style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '520px', margin: '0 auto' }}>
+            {[100, 92, 96, 70, 88, 60].map((w, i) => (
+              <div key={i} style={{ height: '12px', width: `${w}%`, backgroundColor: '#E8F5E9', borderRadius: '6px' }} />
+            ))}
+          </div>
+          <div style={{ fontSize: '12px', color: '#9E9E9E', marginTop: '14px', fontStyle: 'italic' }}>Yapay zekâ yanıtı hazırlanıyor, birkaç saniye sürebilir.</div>
+        </div>
+      )}
 
       {improveError && (
         <div style={{ backgroundColor: '#FFEBEE', color: '#C62828', padding: '15px', borderRadius: '8px', marginBottom: '20px', textAlign: 'center', border: '1px solid #EF9A9A' }}>⚠️ {improveError}</div>
