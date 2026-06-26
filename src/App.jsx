@@ -683,38 +683,74 @@ ${text.slice(0, 2000)}
     const toneInstruction = toneStyle === 'genel'
       ? 'Metnin mevcut tonunu koru, belirli bir tona zorlama.'
       : `Metni "${toneName}" tonuna uygun hale getir (${toneDesc}). Tonu kelime seçimi, cümle ritmi ve hitap tarzıyla yansıt.`;
+    const platformRulebooks = {
+      gazete: `MECRA KURAL KİTABI — Gazete ve Haber Portalı (yapıyı buna göre yeniden kur):
+- TERS PİRAMİT: En önemli / haber değeri taşıyan bilgiyi İLK cümleye taşı; ayrıntılar önem sırasına göre azalarak gelsin.
+- LEAD: İlk cümle 5N1K'nın en kritik öğelerini (kim, ne, nerede, ne zaman) en fazla 30 kelimede versin.
+- CÜMLE UZUNLUĞU: Cümleleri 20-25 kelimeye indir; uzun zincir cümleleri böl.
+- OBJEKTİFLİK: Nesnel, 3. tekil haber dili. Abartılı/öznel sıfatları (muhteşem, unutulmaz, şahane, büyük usta vb.) ayıkla ya da nötrle.
+- Gereksiz süslemeyi at; spot + gövde mantığıyla kur.`,
+      instagram: `MECRA KURAL KİTABI — Instagram caption:
+- KANCA: İlk satır güçlü, merak uyandıran, kesilse bile çalışan bir açılış olsun (en fazla 12 kelime).
+- Kısa paragraflar ve satır araları; sıcak, samimi bir dil.
+- Ölçülü emoji kullan (abartma).
+- Sonda net bir eylem çağrısı (ör. "Detaylar profilde") + 3-5 ilgili hashtag.
+- Akademik/resmi dili kır, konuşma diline yaklaştır.`,
+      facebook: `MECRA KURAL KİTABI — Facebook:
+- Konuşma dili; samimi ama bilgilendirici.
+- Etkileşim için bir SORU ya da tartışma çağrısı ekle.
+- Kısa paragraflar; tek blok metinden kaçın.
+- Bağlantı / etkinlik / çağrı varsa öne çıkar.`,
+      sms: `MECRA KURAL KİTABI — SMS (AGRESİF KISALTMA):
+- Metni TEK mesaja sığacak şekilde acımasızca kısalt (tercihen ≤160 Latin / ≤70 Türkçe karakter).
+- YALNIZCA en kritik tek mesajı bırak; ikincil tüm bilgiyi AT. (Bu mecrada bilgi çıkarmak SERBESTTİR.)
+- Tek net eylem çağrısı bırak (tarih / yer / link / numara).
+- Gereksiz nezaket kalıplarını, süs sıfatlarını ve bağlaçları at. Türkçe karakterin segment maliyetini gözet.`,
+    };
+    const rulebook = platformRulebooks[platform] || '';
+    const isPlatformRewrite = platform !== 'genel' && rulebook !== '';
     const platformInstruction = {
       instagram: 'Instagram için: akıcı, sıcak, görsel anlatıma uygun caption tarzı.',
       facebook: 'Facebook için: konuşma dilinde, etkileşime açık, samimi.',
-      gazete: 'Gazete ve haber portalı için: 5N1K netliğinde, ters piramit kurgusu, objektif haber dili; en önemli bilgi ilk cümlede.',
-      sms: 'SMS için: tek mesaja sığacak kadar kısa, net ve tek eylem çağrılı; Türkçe karakterlerin segment sınırını düşürdüğünü gözet.',
+      gazete: 'Gazete ve haber portalı için: 5N1K netliğinde, ters piramit kurgusu, objektif haber dili.',
+      sms: 'SMS için: tek mesaja sığacak kadar kısa, net ve tek eylem çağrılı.',
       genel: 'Genel kullanım için dengeli ve evrensel bir dil kullan.'
     }[platform] || 'Genel kullanım için dengeli bir dil kullan.';
 
-    const prompt = `Sen uzman bir Türkçe editör ve metin iyileştirme uzmanısın. Aşağıdaki metni okunabilirliğini en üst düzeye çıkaracak şekilde profesyonelce yeniden yaz.
-
-HEDEF BAĞLAM:
-- Platform: ${platformName} → ${platformInstruction}
-- Hedef Kitle: ${audienceName} → ${audienceInstruction}
-- Ton: ${toneName}
-
-UYGULANACAK İYİLEŞTİRMELER (HEPSİNİ UYGULA):
+    const baseImprovements = `UYGULANACAK İYİLEŞTİRMELER (HEPSİNİ UYGULA):
 1. PASİF→AKTİF: Pasif yapıları aktif cümlelere çevir. Anlatımı dinamik ve canlı yap.
 2. GEREKSİZ KELİMELER: Dolgu kelimelerini (şey, biraz, gibi, falan, yani, aslında) ve gereksiz tekrarları temizle.
 3. BASİTLEŞTİRME: Gereksiz yere karmaşık/akademik kelimeleri anlaşılır Türkçe karşılıklarıyla değiştir.
 4. CÜMLE YAPISI: Uzun cümleleri mantıklı şekilde böl. Özne-yüklem-nesne akışını düzelt. Çift olumsuzları sadeleştir.
 5. GEÇİŞ İFADELERİ: Cümleler ve paragraflar arası mantıksal akışı sağlamak için uygun bağlaçlar ekle.
-6. PARAGRAF YAPISI: Metni anlamlı paragraflara böl. Uzun paragrafları parçala.
+6. PARAGRAF YAPISI: Metni anlamlı paragraflara böl. Uzun paragrafları parçala.`;
+
+    // SMS dışında bilgi korunur; SMS'te agresif kısaltma için bilgi çıkarmak serbesttir.
+    const preserveRule = platform === 'sms'
+      ? '- Metnin ANA mesajını ve olgusal doğruluğunu KORU; ancak ikincil bilgileri çıkarabilir, metni büyük ölçüde kısaltabilirsin (SMS gereği).'
+      : '- Metnin orijinal anlamını, mesajını ve niyetini KORU.\n- Yeni bilgi EKLEME, mevcut önemli bilgiyi ÇIKARMA. Yapıyı ve dili mecraya göre yeniden kurabilirsin.';
+
+    const taskLine = isPlatformRewrite
+      ? `Sen üst düzey bir Türkçe editörsün. Aşağıdaki metni, "${platformName}" mecrasının diline ve formatına uygun şekilde YENİDEN YAZ ve YENİDEN YAPILANDIR. Aşağıdaki MECRA KURAL KİTABI önceliklidir.`
+      : `Sen uzman bir Türkçe editör ve metin iyileştirme uzmanısın. Aşağıdaki metni okunabilirliğini en üst düzeye çıkaracak şekilde profesyonelce yeniden yaz.`;
+
+    const prompt = `${taskLine}
+
+HEDEF BAĞLAM:
+- Platform: ${platformName} → ${platformInstruction}
+- Hedef Kitle: ${audienceName} → ${audienceInstruction}
+- Ton: ${toneName}
+${isPlatformRewrite ? `\n${rulebook}\n` : ''}
+${baseImprovements}
 
 TON TALİMATI: ${toneInstruction}
 
 KESİN KURALLAR:
-- Metnin orijinal anlamını, mesajını ve niyetini KORU.
-- Yeni bilgi EKLEME, mevcut bilgiyi ÇIKARMA. Sadece dili ve yapıyı iyileştir.
+${preserveRule}
 - Türkçe dilbilgisi ve yazım kurallarına eksiksiz uy.
-- SADECE iyileştirilmiş metni döndür. Açıklama, başlık, not, markdown veya ön söz EKLEME.
+- SADECE ${isPlatformRewrite ? 'yeniden yazılmış' : 'iyileştirilmiş'} metni döndür. Açıklama, başlık, not, markdown veya ön söz EKLEME.
 
-İYİLEŞTİRİLECEK METİN:
+${isPlatformRewrite ? 'YENİDEN YAZILACAK METİN' : 'İYİLEŞTİRİLECEK METİN'}:
 """
 ${text}
 """`;
@@ -989,7 +1025,13 @@ ${text}
         {text.trim() && !showComparison && (
           <>
             <button onClick={improveReadability} disabled={isImproving} style={{ padding: '12px 30px', fontSize: '16px', backgroundColor: isImproving ? '#A5D6A7' : '#4CAF50', color: 'white', border: 'none', borderRadius: '8px', cursor: isImproving ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-              {isImproving ? '✨ İyileştiriliyor...' : '✨ Okunabilirliği Artır (AI)'}
+              {isImproving ? '✨ İşleniyor...' : ({
+                genel: '✨ Okunabilirliği Artır (AI)',
+                gazete: '📰 Gazete Diline Çevir (AI)',
+                instagram: '📸 Instagram’a Uyarla (AI)',
+                facebook: '👥 Facebook’a Uyarla (AI)',
+                sms: '💬 SMS’e Sığdır (AI)',
+              }[platform] || '✨ Okunabilirliği Artır (AI)')}
             </button>
             <button onClick={() => setCompareMode(!compareMode)} style={{ padding: '12px 30px', fontSize: '16px', backgroundColor: compareMode ? '#9E9E9E' : '#2196F3', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
               {compareMode ? 'Karşılaştırmayı Kapat' : 'Platform Karşılaştır'}
