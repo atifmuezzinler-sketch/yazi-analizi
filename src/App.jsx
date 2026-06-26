@@ -381,7 +381,10 @@ export default function AdvancedTextAnalyzer() {
     if (transitionCount >= 3) seoScore += 10;
     seoScore = Math.min(100, seoScore);
 
-    const platformScore = calculatePlatformScore(platform, { characters, wordCount, sentenceCount, readabilityScore, formalityScore, smsText: inputText });
+    const leadWords = sentences.length > 0 ? sentences[0].trim().split(/\s+/).filter(Boolean).length : 0;
+    const questionCount = (inputText.match(/\?/g) || []).length;
+    const platformData = { wordCount, sentenceCount, readabilityScore, formalityScore, activeRatio: activePassiveRatio, leadWords, questionCount, avgSentenceLength, smsText: inputText };
+    const platformScore = calculatePlatformScore(platform, platformData);
     const engagementScore = calculateEngagementScore({ emotionalTone, readabilityScore, platform, sentenceCount });
     const trustScore = calculateTrustScore({ formalityScore, activePassiveRatio, transitionCount, platform });
 
@@ -392,38 +395,62 @@ export default function AdvancedTextAnalyzer() {
       bezirciScore, bezirciLevel, fleschEase, fleschGrade,
       toneAnalysis: { formalityScore: Math.round(formalityScore), activePassiveRatio, passiveCount, emotionalTone, addressStyle },
       advancedAnalysis: { sentenceVariety: sentenceVariety.toFixed(1), transitionWords: transitionCount, repeatedWords, conjunctionDiversity, lengthDistribution, intensifiers, intensifierTotal, repeatedOpeners },
-      seoScore, platformScore, engagementScore, trustScore
+      seoScore, platformScore, engagementScore, trustScore,
+      platformChecklist: getPlatformChecklist(platform, platformData).items
     };
   };
 
-  const calculatePlatformScore = (platform, data) => {
-    let score = 50;
+  // Mecra uygunluğu: tek doğruluk kaynağı. Hem ✓/✗ kontrol listesini hem skoru üretir.
+  // d: { wordCount, sentenceCount, readabilityScore, formalityScore, activeRatio, leadWords, questionCount, avgSentenceLength, smsText }
+  const getPlatformChecklist = (platform, d) => {
+    let items = [];
     switch (platform) {
+      case 'gazete':
+        items = [
+          { label: `Lead (ilk cümle) özlü — ${d.leadWords} kelime`, ok: d.leadWords > 0 && d.leadWords <= 30, hint: '≤ 30 kelime' },
+          { label: `Okunabilirlik yeterli — Ateşman ${d.readabilityScore}`, ok: d.readabilityScore >= 50, hint: '≥ 50' },
+          { label: `Objektif/resmi ton — %${d.formalityScore}`, ok: d.formalityScore >= 50, hint: '≥ %50' },
+          { label: `Aktif cümle baskın — %${d.activeRatio}`, ok: d.activeRatio >= 70, hint: '≥ %70' },
+          { label: `Ortalama cümle makul — ${d.avgSentenceLength} kelime`, ok: parseFloat(d.avgSentenceLength) <= 25, hint: '≤ 25 kelime' },
+        ];
+        break;
       case 'instagram':
-        if (data.wordCount <= 150) score += 25;
-        if (data.readabilityScore >= 70) score += 25;
+        items = [
+          { label: `Kısa caption — ${d.wordCount} kelime`, ok: d.wordCount <= 150, hint: '≤ 150 kelime' },
+          { label: `Güçlü kanca (ilk cümle) — ${d.leadWords} kelime`, ok: d.leadWords > 0 && d.leadWords <= 12, hint: '≤ 12 kelime' },
+          { label: `Yüksek okunabilirlik — Ateşman ${d.readabilityScore}`, ok: d.readabilityScore >= 60, hint: '≥ 60' },
+          { label: `Samimi ton (aşırı resmi değil) — %${d.formalityScore}`, ok: d.formalityScore <= 65, hint: '≤ %65' },
+        ];
         break;
       case 'facebook':
-        if (data.wordCount <= 250) score += 25;
-        if (data.sentenceCount >= 3) score += 25;
-        break;
-      case 'gazete':
-        if (data.wordCount >= 300) score += 20;
-        if (data.formalityScore >= 50) score += 30;
+        items = [
+          { label: `Orta uzunluk — ${d.wordCount} kelime`, ok: d.wordCount <= 250, hint: '≤ 250 kelime' },
+          { label: `Etkileşim sinyali — ${d.questionCount} soru`, ok: d.questionCount >= 1, hint: '≥ 1 soru (?)' },
+          { label: `Konuşma dili — Ateşman ${d.readabilityScore}`, ok: d.readabilityScore >= 55, hint: '≥ 55' },
+          { label: `Tek blok değil — ${d.sentenceCount} cümle`, ok: d.sentenceCount >= 3, hint: '≥ 3 cümle' },
+        ];
         break;
       case 'sms': {
-        // SMS rubriği: tek segmente sığmak esastır. Çok segment = ceza.
-        const sms = computeSmsInfo(data.smsText || '');
-        if (sms.segments <= 1) score += 40;
-        else score -= (sms.segments - 1) * 18;
-        if (data.sentenceCount <= 2) score += 10; // kısa ve net
+        const sms = computeSmsInfo(d.smsText || '');
+        const cta = /(https?:\/\/|www\.|\b0\d{2,}|\b\d{4,}\b)/i.test(d.smsText || '') ||
+          /\b(ara|aray[ıi]n|yaz|t[ıi]kla|gel|kat[ıi]l|kaydol|hemen|rezervasyon|bilgi için)\b/i.test(d.smsText || '');
+        items = [
+          { label: sms.segments <= 1 ? `Tek mesaja sığıyor — ${sms.segments} segment` : `${sms.segments} segmente bölünüyor`, ok: sms.segments <= 1, hint: '1 segment', w: 3 },
+          { label: `Net/tek mesaj — ${d.sentenceCount} cümle`, ok: d.sentenceCount <= 2, hint: '≤ 2 cümle' },
+          { label: cta ? 'Eylem çağrısı var' : 'Eylem çağrısı (link/numara/komut) yok', ok: cta, hint: 'CTA önerilir' },
+        ];
         break;
       }
       default:
-        score = 70;
+        return { items: [], score: 70 };
     }
-    return Math.min(100, Math.max(0, score));
+    const totW = items.reduce((a, b) => a + (b.w || 1), 0);
+    const passW = items.reduce((a, b) => a + (b.ok ? (b.w || 1) : 0), 0);
+    const score = totW > 0 ? Math.round((passW / totW) * 100) : 70;
+    return { items, score };
   };
+
+  const calculatePlatformScore = (platform, data) => getPlatformChecklist(platform, data).score;
 
   const calculateEngagementScore = (data) => {
     let score = 50;
@@ -861,10 +888,15 @@ ${text}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px' }}>
         {comparePlatforms.map((plt) => {
           const pltMetrics = analyzeText(text);
-          const pltScore = calculatePlatformScore(plt, {
-            characters: pltMetrics.characters, wordCount: pltMetrics.words, sentenceCount: pltMetrics.sentences,
-            readabilityScore: pltMetrics.readabilityScore, formalityScore: pltMetrics.toneAnalysis.formalityScore, smsText: text
-          });
+          const pltLead = (() => { const s = splitSentences(text); return s.length ? s[0].trim().split(/\s+/).filter(Boolean).length : 0; })();
+          const pltData = {
+            wordCount: pltMetrics.words, sentenceCount: pltMetrics.sentences,
+            readabilityScore: pltMetrics.readabilityScore, formalityScore: pltMetrics.toneAnalysis.formalityScore,
+            activeRatio: pltMetrics.toneAnalysis.activePassiveRatio, leadWords: pltLead,
+            questionCount: (text.match(/\?/g) || []).length, avgSentenceLength: pltMetrics.avgSentenceLength, smsText: text
+          };
+          const pltCheck = getPlatformChecklist(plt, pltData);
+          const pltScore = pltCheck.score;
           return (
             <div key={plt} style={{ backgroundColor: '#F5F5F5', padding: '20px', borderRadius: '8px', border: `2px solid ${platforms[plt].color}` }}>
               <div style={{ fontSize: '32px', textAlign: 'center', marginBottom: '10px' }}>{platforms[plt].icon}</div>
@@ -873,14 +905,15 @@ ${text}
                 <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{pltScore}</div>
                 <div style={{ fontSize: '14px' }}>Uygunluk Skoru</div>
               </div>
-              <div style={{ marginTop: '15px', fontSize: '13px', color: '#666' }}>
-                <div style={{ marginBottom: '8px' }}><strong>Karakter:</strong> {pltMetrics.characters}</div>
-                {plt === 'sms' && (() => { const s = computeSmsInfo(text); return (
-                  <div style={{ marginBottom: '8px' }}><strong>Segment:</strong> {s.segments}{s.segments > 1 ? ' ⚠️' : ''}{s.unicode ? ' (TR)' : ''}</div>
-                ); })()}
-                <div style={{ marginBottom: '8px' }}><strong>Kelime:</strong> {pltMetrics.words}</div>
-                <div><strong>Okunabilirlik:</strong> {pltMetrics.readabilityScore}</div>
-              </div>
+              {pltCheck.items.length > 0 && (
+                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {pltCheck.items.map((it, ix) => (
+                    <div key={ix} style={{ fontSize: '12px', color: it.ok ? '#2E7D32' : '#C62828', display: 'flex', gap: '6px', alignItems: 'baseline' }}>
+                      <span>{it.ok ? '✓' : '✗'}</span><span>{it.label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
@@ -1261,7 +1294,7 @@ ${text}
               <h3 style={{ color: '#333', marginTop: 0, marginBottom: '20px', textAlign: 'center' }}>📊 Performans Dashboard</h3>
               {[
                 { label: 'SEO Skoru', val: metrics.seoScore, estimated: false },
-                { label: 'Platform Uygunluğu', val: metrics.platformScore, estimated: true },
+                { label: 'Platform Uygunluğu', val: metrics.platformScore, estimated: platform === 'genel' },
                 { label: 'Engagement Potansiyeli', val: metrics.engagementScore, estimated: true },
                 { label: 'Güvenilirlik Skoru', val: metrics.trustScore, estimated: true }
               ].map((m, i) => (
@@ -1278,8 +1311,21 @@ ${text}
                   </div>
                 </div>
               ))}
+              {metrics.platformChecklist && metrics.platformChecklist.length > 0 && (
+                <div style={{ marginTop: '-6px', marginBottom: '20px', backgroundColor: '#FAFAFA', border: '1px solid #ECECEC', borderRadius: '8px', padding: '12px 14px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', marginBottom: '8px' }}>{platforms[platform].name} kontrol listesi</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {metrics.platformChecklist.map((it, ix) => (
+                      <div key={ix} style={{ fontSize: '12px', color: it.ok ? '#2E7D32' : '#C62828', display: 'flex', gap: '6px', alignItems: 'baseline' }}>
+                        <span style={{ flexShrink: 0 }}>{it.ok ? '✓' : '✗'}</span>
+                        <span>{it.label}{!it.ok && it.hint ? <span style={{ color: '#9E9E9E' }}> (hedef: {it.hint})</span> : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div style={{ marginTop: '15px', fontSize: '11px', color: '#616161', textAlign: 'center', fontStyle: 'italic' }}>
-                "Tahmini" etiketli skorlar (platform, engagement, güven) sezgisel kestirimlerdir; ampirik veriyle kalibre edilmemiştir. SEO skoru kural tabanlıdır.
+                Platform Uygunluğu ve SEO skoru kural tabanlıdır (yukarıdaki kontrol listesine dayanır). "Tahmini" etiketli Engagement ve Güven skorları sezgisel kestirimlerdir; ampirik veriyle kalibre edilmemiştir.
               </div>
             </div>
           </div>
