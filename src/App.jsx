@@ -747,6 +747,11 @@ ASLA DOKUNMA (bunları hata sayma):
 - Yabancı kelimeler, markalar, web adresleri, e-posta adresleri
 - Üslup tercihleri, eş anlamlı sözcük önerileri, cümle yeniden kurma
 
+GEREKSİZ / HAYALET ÖNERİ YASAĞI (çok önemli — bunları üretme):
+- "dogrusu" ile "hatali" AYNIYSA (yalnızca görünmez/biçimsel fark dahil) o öğeyi ASLA döndürme. Düzeltme, metni gerçekten değiştirmiyorsa hata yoktur.
+- Bir kelimenin İKİ yazımı da geçerliyse (ör. "hikâye"/"hikaye", şapkalı/şapkasız biçimler, "herşey"/"her şey dışındaki tartışmalı durumlar) bunu HATA sayma ve TUTARLILIK önerisi verme. Tutarlılık bir üslup tercihidir, nesnel hata değildir.
+- ZORUNLU OLMAYAN virgül önerme. Özellikle: (a) özne ile yüklem arasına, (b) bir sıfat-fiil/ortaç öbeği ("...-an/-en...", "...-ecek/-acak...", "...-mış...") ile nitelediği isim arasına virgül KOYMA. Yalnızca dilbilgisel olarak ZORUNLU noktalamayı işaretle. Şüpheliysen ATLA.
+
 HATA TÜRLERİ (yalnızca bunlar):
 - "yazım": yanlış yazılmış kelime (ör. "hafızasızda" → "hafızasında", "yalnış" → "yanlış")
 - "dilbilgisi": ek/çekim/uyum hatası (ör. özne-yüklem uyumsuzluğu, yanlış ek)
@@ -778,10 +783,14 @@ ${text}
       const end = raw.lastIndexOf(']');
       if (start === -1 || end === -1) throw new Error('Geçersiz yanıt');
       const parsed = JSON.parse(raw.slice(start, end + 1));
-      // Yalnızca metinde bulunabilen hataları tut (tipografik farka toleranslı; yanlış konuma uygulamayı önler)
-      const valid = (Array.isArray(parsed) ? parsed : []).filter(
-        (it) => it && it.hatali && it.dogrusu && findFlexible(text, it.hatali).idx !== -1
-      );
+      // Filtre: (1) metinde bulunabilen, (2) gerçekten DEĞİŞİKLİK içeren (hayalet değil) hatalar
+      const valid = (Array.isArray(parsed) ? parsed : []).filter((it) => {
+        if (!it || !it.hatali || !it.dogrusu) return false;
+        // Hayalet kartı ele: düzeltme orijinalle aynıysa (tipografik fark normalize edilerek) at
+        if (normForMatch(it.hatali).trim() === normForMatch(it.dogrusu).trim()) return false;
+        // Metinde bulunamıyorsa (yanlış konuma uygulamayı önlemek için) at
+        return findFlexible(text, it.hatali).idx !== -1;
+      });
       setGrammarIssues(valid);
       setGrammarChecked(true);
     } catch (err) {
