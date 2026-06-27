@@ -185,6 +185,58 @@ export default function AdvancedTextAnalyzer() {
     return { idx: i, len: needle.length }; // uzunluk korunduğu için aynı slice geçerli
   };
 
+  // ——— KATMAN 1: Olgu Sadakati Denetimi (deterministik, AI'sız) ———
+  // Orijinal ve geliştirilmiş metni karşılaştırır; somut verinin korunup korunmadığını izler:
+  // sayı/tarih/saat, tırnak içi alıntılar, özel adlar/kısaltmalar. Çerçeve/anlam kaymasını ÖLÇMEZ.
+  const computeFidelity = (orig, impr) => {
+    const O = normForMatch(orig || '');
+    const I = normForMatch(impr || '');
+    const oLow = O.toLowerCase();
+    const iLow = I.toLowerCase();
+
+    const MONTHS = 'ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık';
+    const DAYS = 'pazartesi|salı|çarşamba|perşembe|cuma|cumartesi|pazar';
+
+    // 1) Sayı / tarih / saat: rakam içeren tokenlar + ay/gün adları
+    const numTokens = (s) => {
+      const nums = (s.match(/\d+(?:[.,:]\d+)*/g) || []);
+      const dateWords = (s.match(new RegExp(`\\b(?:${MONTHS}|${DAYS})\\b`, 'gi')) || []).map((w) => w.toLowerCase());
+      return [...nums, ...dateWords];
+    };
+    const oNums = numTokens(O), iNums = numTokens(I);
+    const iNumSet = new Set(iNums), oNumSet = new Set(oNums);
+    const droppedNumbers = [...new Set(oNums)].filter((n) => !iNumSet.has(n));
+    const addedNumbers = [...new Set(iNums)].filter((n) => !oNumSet.has(n));
+
+    // 2) Tırnak içi alıntılar: çekirdek (ilk ~30 karakter) karşı metinde geçiyor mu?
+    const quotes = (s) => (s.match(/"([^"]{2,200})"/g) || []).map((q) => q.replace(/^"|"$/g, '').trim()).filter((q) => q.length >= 2);
+    const core = (q) => q.toLowerCase().replace(/\s+/g, ' ').slice(0, 30);
+    const oQuotes = [...new Set(quotes(O))], iQuotes = [...new Set(quotes(I))];
+    const droppedQuotes = oQuotes.filter((q) => !iLow.replace(/\s+/g, ' ').includes(core(q)));
+    const addedQuotes = iQuotes.filter((q) => !oLow.replace(/\s+/g, ' ').includes(core(q)));
+
+    // 3) Özel adlar / kısaltmalar (yüksek isabet alt kümesi): kısaltma (LTB) + kesme-ekli ad (Milani'nin→Milani)
+    // Çok-kelimeli ad eşleşmesi Türkçe'de NER olmadan gürültülü olduğundan KAPSAM DIŞI; ayrıca jenerik sözcükler elenir.
+    const NAME_STOP = new Set(['sokak','cadde','meydan','belediye','belediyesi','başkan','başkanı','başkanlığı','meclis','meclisi','müdür','müdürü','üniversite','üniversitesi','bölüm','bölümü','plastik','sanatlar','görevli','görevlisi','yardımcısı','sayın','cumhuriyet','devlet','tiyatro','tiyatroları','ocak','şubat','mart','nisan','mayıs','haziran','temmuz','ağustos','eylül','ekim','kasım','aralık','pazartesi','salı','çarşamba','perşembe','cuma','cumartesi','pazar']);
+    const names = (s) => {
+      const acro = (s.match(/\b[A-ZÇĞİÖŞÜ]{2,}\b/g) || []);
+      const apos = (s.match(/[A-ZÇĞİÖŞÜ][a-zçğıöşüı]+(?=')/g) || []);
+      return [...acro, ...apos].filter((n) => n.length >= 2 && !NAME_STOP.has(n.toLowerCase()));
+    };
+    const oNames = [...new Set(names(O))], iNames = [...new Set(names(I))];
+    // Eşleme: ismin gövdesi (küçük harf) karşı metinde substring olarak geçiyor mu? (ek farkları tolere edilir)
+    const present = (name, hayLow) => hayLow.includes(name.toLowerCase());
+    const droppedNames = oNames.filter((n) => !present(n, iLow));
+    const addedNames = iNames.filter((n) => !present(n, oLow));
+
+    const cap = (arr, n = 12) => arr.slice(0, n);
+    const dropped = { numbers: cap(droppedNumbers), quotes: cap(droppedQuotes, 6), names: cap(droppedNames) };
+    const added = { numbers: cap(addedNumbers), quotes: cap(addedQuotes, 6), names: cap(addedNames) };
+    const hasDropped = dropped.numbers.length || dropped.quotes.length || dropped.names.length;
+    const hasAdded = added.numbers.length || added.quotes.length || added.names.length;
+    return { dropped, added, hasDropped: !!hasDropped, hasAdded: !!hasAdded };
+  };
+
   const analyzeText = (inputText) => {
     if (!inputText.trim()) return emptyMetricsObj();
 
@@ -1485,6 +1537,55 @@ ${text}
               <tr><td style={{ padding: '12px', border: '1px solid #ddd' }}>Pasif Yapı Sayısı</td><td style={{ padding: '12px', textAlign: 'center', border: '1px solid #ddd' }}>{metrics.toneAnalysis.passiveCount}</td><td style={{ padding: '12px', textAlign: 'center', border: '1px solid #ddd' }}>{improvedMetrics.toneAnalysis.passiveCount}</td><td style={{ padding: '12px', textAlign: 'center', border: '1px solid #ddd', color: improvedMetrics.toneAnalysis.passiveCount < metrics.toneAnalysis.passiveCount ? '#4CAF50' : '#666' }}>{improvedMetrics.toneAnalysis.passiveCount - metrics.toneAnalysis.passiveCount}</td></tr>
             </tbody>
           </table>
+          {improvedText && (() => {
+            const fid = computeFidelity(text, improvedText);
+            const chip = (txt, bg, bd, col) => (<span style={{ display: 'inline-block', backgroundColor: bg, border: `1px solid ${bd}`, color: col, padding: '4px 10px', borderRadius: '6px', margin: '4px 6px 0 0', fontSize: '13px' }}>{txt}</span>);
+            const catRow = (label, items, bg, bd, col, quote) => items.length > 0 && (
+              <div style={{ marginTop: '8px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#555' }}>{label}: </span>
+                {items.map((it, i) => chip(quote ? `"${it.length > 60 ? it.slice(0, 60) + '…' : it}"` : it, bg, bd, col))}
+              </div>
+            );
+            return (
+              <div style={{ backgroundColor: '#FAFAFA', border: '1px solid #E0E0E0', borderRadius: '8px', padding: '18px', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <h3 style={{ color: '#37474F', margin: 0, fontSize: '17px' }}>🛡️ Olgu Sadakati Denetimi</h3>
+                  <span style={{ fontSize: '12px', backgroundColor: '#ECEFF1', color: '#546E7A', padding: '2px 8px', borderRadius: '10px' }}>deterministik</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#757575', fontStyle: 'italic', marginTop: '6px', marginBottom: '12px' }}>
+                  Yalnızca somut veri (sayı, tarih, alıntı, özel ad) izlenir; anlam veya çerçeve kaymasını ölçmez. Sonuçları mutlaka gözden geçirin.
+                </div>
+
+                {!fid.hasDropped && !fid.hasAdded ? (
+                  <div style={{ backgroundColor: '#E8F5E9', border: '1px solid #A5D6A7', borderRadius: '6px', padding: '12px 14px', color: '#2E7D32', fontSize: '14px' }}>
+                    ✓ Somut veri korunmuş görünüyor (sayı, tarih, alıntı, özel ad). Yine de metni gözden geçirin.
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
+                    {fid.hasDropped && (
+                      <div style={{ backgroundColor: '#FFF3E0', border: '1px solid #FFCC80', borderRadius: '6px', padding: '12px 14px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#E65100', marginBottom: '4px' }}>⚠️ Çıkarılan — orijinalde var, yeni metinde yok</div>
+                        <div style={{ fontSize: '12px', color: '#8D6E63', marginBottom: '4px' }}>Düşürülmüş olabilir; bilinçli kısaltma değilse geri ekleyin.</div>
+                        {catRow('Sayı / tarih', fid.dropped.numbers, '#FFE0B2', '#FFB74D', '#E65100')}
+                        {catRow('Alıntı', fid.dropped.quotes, '#FFE0B2', '#FFB74D', '#E65100', true)}
+                        {catRow('Özel ad', fid.dropped.names, '#FFE0B2', '#FFB74D', '#E65100')}
+                      </div>
+                    )}
+                    {fid.hasAdded && (
+                      <div style={{ backgroundColor: '#FFEBEE', border: '1px solid #EF9A9A', borderRadius: '6px', padding: '12px 14px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#C62828', marginBottom: '4px' }}>⚠️ Eklenen — orijinalde yok, doğrulayın</div>
+                        <div style={{ fontSize: '12px', color: '#B71C1C', marginBottom: '4px' }}>Olası uydurma; kaynaktan doğrulanmadan yayımlamayın.</div>
+                        {catRow('Sayı / tarih', fid.added.numbers, '#FFCDD2', '#E57373', '#C62828')}
+                        {catRow('Alıntı', fid.added.quotes, '#FFCDD2', '#E57373', '#C62828', true)}
+                        {catRow('Özel ad', fid.added.names, '#FFCDD2', '#E57373', '#C62828')}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <div style={{ textAlign: 'center', marginTop: '25px' }}>
             <button onClick={useImprovedText} style={{ padding: '12px 30px', fontSize: '16px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginRight: '10px' }}>Düzenlenen Metni Kullan</button>
             <button onClick={revertToOriginal} style={{ padding: '12px 30px', fontSize: '16px', backgroundColor: '#9E9E9E', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Orijinale Geri Dön</button>
