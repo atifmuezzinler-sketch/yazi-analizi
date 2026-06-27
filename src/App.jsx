@@ -670,6 +670,11 @@ ${text.slice(0, 2000)}
   const improveReadability = async () => {
     setIsImproving(true);
     setImproveError('');
+    // Tek sonuç odağı: bu işlem açılırken diğer sonuç panellerini kapat
+    setCompareMode(false);
+    setGrammarChecked(false);
+    setGrammarIssues([]);
+    setGrammarError('');
     const platformName = platforms[platform].name;
     const audienceName = audienceTypes[audienceType].name;
     const toneName = toneStyles[toneStyle].name;
@@ -803,6 +808,11 @@ ${text}
     setGrammarError('');
     setGrammarIssues([]);
     setGrammarChecked(false);
+    // Tek sonuç odağı: bu işlem açılırken diğer sonuç panellerini kapat
+    setCompareMode(false);
+    setShowComparison(false);
+    setImprovedText('');
+    setImprovedMetrics(null);
 
     const prompt = `Sen titiz bir Türkçe dil editörüsün. Görevin: aşağıdaki metinde YALNIZCA NESNEL yazım, dilbilgisi ve noktalama hatalarını bulmak.
 
@@ -1050,11 +1060,11 @@ ${text}
                 sms: '💬 SMS’e Sığdır (AI)',
               }[platform] || '✨ Okunabilirliği Artır (AI)')}
             </button>
-            <button onClick={() => setCompareMode(!compareMode)} style={{ padding: '12px 30px', fontSize: '16px', backgroundColor: compareMode ? '#9E9E9E' : '#2196F3', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+            <button onClick={() => { const next = !compareMode; setCompareMode(next); if (next) { setGrammarChecked(false); setGrammarIssues([]); setGrammarError(''); setShowComparison(false); setImprovedText(''); setImprovedMetrics(null); } }} style={{ padding: '12px 30px', fontSize: '16px', backgroundColor: compareMode ? '#9E9E9E' : '#2196F3', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
               {compareMode ? 'Karşılaştırmayı Kapat' : 'Platform Karşılaştır'}
             </button>
             <button onClick={checkGrammar} disabled={grammarChecking} style={{ padding: '12px 30px', fontSize: '16px', backgroundColor: grammarChecking ? '#CE93D8' : '#8E24AA', color: 'white', border: 'none', borderRadius: '8px', cursor: grammarChecking ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-              {grammarChecking ? '🔍 Denetleniyor...' : '🔍 Yazım & Dilbilgisi Denetle'}
+              {grammarChecking ? (<><span className="ya-spinner" /> Denetleniyor…</>) : '🔍 Yazım & Dilbilgisi Denetle'}
             </button>
           </>
         )}
@@ -1077,6 +1087,18 @@ ${text}
             ))}
           </div>
           <div style={{ fontSize: '12px', color: '#9E9E9E', marginTop: '14px', fontStyle: 'italic' }}>Yapay zekâ yanıtı hazırlanıyor, birkaç saniye sürebilir.</div>
+        </div>
+      )}
+
+      {grammarChecking && (
+        <div style={{ backgroundColor: '#FFFFFF', padding: '30px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px', border: '2px dashed #CE93D8', textAlign: 'center' }}>
+          <div style={{ fontSize: '15px', color: '#6A1B9A', fontWeight: 'bold', marginBottom: '16px' }}>
+            <span className="ya-spinner" style={{ borderColor: 'rgba(142,36,170,0.3)', borderTopColor: '#8E24AA' }} /> Yazım ve dilbilgisi denetleniyor…
+          </div>
+          <div className="ya-pulse" style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '520px', margin: '0 auto' }}>
+            {[100, 84, 92, 70].map((w, i) => (<div key={i} style={{ height: '14px', width: `${w}%`, backgroundColor: '#F3E5F5', borderRadius: '6px' }} />))}
+          </div>
+          <div style={{ fontSize: '12px', color: '#9E9E9E', marginTop: '14px', fontStyle: 'italic' }}>Metin taranıyor, birkaç saniye sürebilir.</div>
         </div>
       )}
 
