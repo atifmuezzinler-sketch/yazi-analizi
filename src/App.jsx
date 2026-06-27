@@ -782,13 +782,22 @@ ${text.slice(0, 2000)}
 5. GEÇİŞ İFADELERİ: Cümleler ve paragraflar arası mantıksal akışı sağlamak için uygun bağlaçlar ekle.
 6. PARAGRAF YAPISI: Metni anlamlı paragraflara böl. Uzun paragrafları parçala.`;
 
-    // SMS dışında bilgi korunur; SMS'te agresif kısaltma için bilgi çıkarmak serbesttir.
+    // SMS dışında bilgi+çerçeve korunur; SMS'te agresif kısaltma için ikincil bilgi çıkarmak serbesttir.
     const preserveRule = platform === 'sms'
-      ? '- Metnin ANA mesajını ve olgusal doğruluğunu KORU; ancak ikincil bilgileri çıkarabilir, metni büyük ölçüde kısaltabilirsin (SMS gereği).'
-      : '- Metnin orijinal anlamını, mesajını ve niyetini KORU.\n- Yeni bilgi EKLEME, mevcut önemli bilgiyi ÇIKARMA. Yapıyı ve dili mecraya göre yeniden kurabilirsin.';
+      ? `- SADAKAT: Metnin ANA mesajını ve olgusal doğruluğunu KORU. İkincil bilgileri çıkarabilir, büyük ölçüde kısaltabilirsin (SMS gereği).
+- Yeni olgu, sayı, tarih, isim veya iddia EKLEME; orijinalde olmayan bir çerçeve veya yorum katma.`
+      : `- SADAKAT (EN YÜKSEK ÖNCELİK — üslup ve mecra kurallarından ÖNCE gelir; çakışırsa sadakat kazanır):
+  • Metinde olmayan yeni olgu, sayı, tarih, isim veya alıntıyı EKLEME. Hiçbir bilgiyi "bağlam" diye dışarıdan getirme.
+  • Mevcut önemli bilgiyi, sayıyı, tarihi, özel adı veya alıntıyı ÇIKARMA.
+  • Orijinalde AÇIKÇA belirtilmeyen bir çerçeve, amaç, sonuç veya neden-sonuç ilişkisi EKLEME (örn. "iki toplumu birleştirmek için", "tarihi bir adım", "eşitlik ve özgürlük adına" gibi yorumlar — kaynak bunu demiyorsa sen de deme).
+  • Orijinalde olmayan değer yargısı veya niteleme sıfatı EKLEME ("güçlü", "büyük", "önemli", "etkileyici", "tarihi" vb.).
+  • Bir kişinin sözünü, niyetini veya duygusunu orijinalin ötesinde GENİŞLETME ya da YORUMLAMA.
+  • VURGUYU KAYDIRMA: orijinalde ikincil olan bir şeyi merkeze taşıma, merkezdekini geri plana atma.
+  • Tırnak içi alıntıları kelimesi kelimesine KORU; kısaltman gerekiyorsa [...] kullan, sözcükleri değiştirme.
+- SERBEST olan: cümle yapısı, kelime seçimi, cümle sırası, paragraf düzeni, mecraya uygun ton, format ve (mecra kural kitabındaki) kanca/başlık biçimi. Özetle: NASIL söylendiğini değiştir, NE söylendiğini ASLA değiştirme.`;
 
     const taskLine = isPlatformRewrite
-      ? `Sen üst düzey bir Türkçe editörsün. Aşağıdaki metni, "${platformName}" mecrasının diline ve formatına uygun şekilde YENİDEN YAZ ve YENİDEN YAPILANDIR. Aşağıdaki MECRA KURAL KİTABI önceliklidir.`
+      ? `Sen üst düzey bir Türkçe editörsün. Aşağıdaki metni, "${platformName}" mecrasının diline ve formatına uygun şekilde YENİDEN YAZ ve YENİDEN YAPILANDIR. Aşağıdaki MECRA KURAL KİTABI biçim ve üslupta önceliklidir; ancak içerik sadakati (KESİN KURALLAR) her zaman kural kitabının üstündedir.`
       : `Sen uzman bir Türkçe editör ve metin iyileştirme uzmanısın. Aşağıdaki metni okunabilirliğini en üst düzeye çıkaracak şekilde profesyonelce yeniden yaz.`;
 
     const prompt = `${taskLine}
