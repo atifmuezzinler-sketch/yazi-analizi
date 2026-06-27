@@ -118,7 +118,8 @@ export default function AdvancedTextAnalyzer() {
       bezirciScore: 0, bezirciLevel: '', fleschEase: 0, fleschGrade: 0,
       toneAnalysis: { formalityScore: 0, activePassiveRatio: 0, passiveCount: 0, emotionalTone: 'nötr', addressStyle: 'belirsiz' },
       advancedAnalysis: { sentenceVariety: 0, transitionWords: 0, repeatedWords: [], conjunctionDiversity: 0, lengthDistribution: [], intensifiers: [], intensifierTotal: 0, repeatedOpeners: [] },
-      seoScore: 0, platformScore: 0, engagementScore: 0, trustScore: 0
+      seoScore: 0, platformScore: 0, engagementScore: 0, trustScore: 0,
+      platformChecklist: [], engagementChecklist: [], trustChecklist: []
     };
   }
 
@@ -438,8 +439,10 @@ export default function AdvancedTextAnalyzer() {
     const questionCount = (inputText.match(/\?/g) || []).length;
     const platformData = { wordCount, sentenceCount, readabilityScore, formalityScore, activeRatio: activePassiveRatio, leadWords, questionCount, avgSentenceLength, smsText: inputText };
     const platformScore = calculatePlatformScore(platform, platformData);
-    const engagementScore = calculateEngagementScore({ emotionalTone, readabilityScore, platform, sentenceCount });
-    const trustScore = calculateTrustScore({ formalityScore, activePassiveRatio, transitionCount, platform });
+    const engagementCheck = getEngagementChecklist({ emotionalTone, readabilityScore, platform, sentenceCount });
+    const trustCheck = getTrustChecklist({ formalityScore, activePassiveRatio, transitionCount, platform });
+    const engagementScore = engagementCheck.score;
+    const trustScore = trustCheck.score;
 
     return {
       characters, words: wordCount, sentences: sentenceCount, avgWordLength, avgSentenceLength,
@@ -449,7 +452,9 @@ export default function AdvancedTextAnalyzer() {
       toneAnalysis: { formalityScore: Math.round(formalityScore), activePassiveRatio, passiveCount, emotionalTone, addressStyle },
       advancedAnalysis: { sentenceVariety: sentenceVariety.toFixed(1), transitionWords: transitionCount, repeatedWords, conjunctionDiversity, lengthDistribution, intensifiers, intensifierTotal, repeatedOpeners },
       seoScore, platformScore, engagementScore, trustScore,
-      platformChecklist: getPlatformChecklist(platform, platformData).items
+      platformChecklist: getPlatformChecklist(platform, platformData).items,
+      engagementChecklist: engagementCheck.items,
+      trustChecklist: trustCheck.items
     };
   };
 
@@ -505,25 +510,35 @@ export default function AdvancedTextAnalyzer() {
 
   const calculatePlatformScore = (platform, data) => getPlatformChecklist(platform, data).score;
 
-  const calculateEngagementScore = (data) => {
-    let score = 50;
-    if (data.emotionalTone === 'pozitif') score += 20;
-    if (data.readabilityScore >= 70) score += 20;
-    if (data.platform === 'instagram' || data.platform === 'facebook') {
-      if (data.sentenceCount <= 5) score += 10;
+  // Etkileşim ve Üslup skorları: toplamsal formül (taban 50 + tetiklenen ölçütler) AYNI kalır;
+  // ek olarak ölçüt listesi döndürülür ki skorun nasıl oluştuğu şeffaf görünsün.
+  const getEngagementChecklist = (d) => {
+    const items = [
+      { label: `Pozitif duygusal ton — ${d.emotionalTone}`, ok: d.emotionalTone === 'pozitif', pts: 20 },
+      { label: `Yüksek okunabilirlik — Ateşman ${d.readabilityScore}`, ok: d.readabilityScore >= 70, pts: 20 },
+    ];
+    if (d.platform === 'instagram' || d.platform === 'facebook') {
+      items.push({ label: `Sosyal için kısa — ${d.sentenceCount} cümle`, ok: d.sentenceCount <= 5, pts: 10 });
+    } else {
+      items.push({ label: 'Sosyal mecrada kısalık bonusu', na: true, pts: 10 });
     }
-    return Math.min(100, score);
+    const score = Math.min(100, 50 + items.reduce((a, b) => a + (b.ok ? b.pts : 0), 0));
+    return { items, score };
   };
 
-  const calculateTrustScore = (data) => {
-    let score = 50;
-    if (data.formalityScore >= 60) score += 20;
-    if (data.activePassiveRatio >= 70) score += 15;
-    if (data.transitionCount >= 3) score += 15;
-    if (data.platform === 'gazete') {
-      if (data.formalityScore >= 70) score += 10;
+  const getTrustChecklist = (d) => {
+    const items = [
+      { label: `Resmi/ciddi ton — %${d.formalityScore}`, ok: d.formalityScore >= 60, pts: 20 },
+      { label: `Aktif çatı baskın — %${d.activePassiveRatio}`, ok: d.activePassiveRatio >= 70, pts: 15 },
+      { label: `Yeterli geçiş ifadesi — ${d.transitionCount} adet`, ok: d.transitionCount >= 3, pts: 15 },
+    ];
+    if (d.platform === 'gazete') {
+      items.push({ label: `Gazetede yüksek formalite — %${d.formalityScore}`, ok: d.formalityScore >= 70, pts: 10 });
+    } else {
+      items.push({ label: 'Gazete yüksek-formalite bonusu', na: true, pts: 10 });
     }
-    return Math.min(100, score);
+    const score = Math.min(100, 50 + items.reduce((a, b) => a + (b.ok ? b.pts : 0), 0));
+    return { items, score };
   };
 
   const generateTemplateSuggestions = (text, platform) => {
@@ -1469,10 +1484,10 @@ ${text}
             <div className="ya-dashboard" style={{ backgroundColor: '#FFFFFF', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', position: 'sticky', top: '20px' }}>
               <h3 style={{ color: '#333', marginTop: 0, marginBottom: '20px', textAlign: 'center' }}>📊 Performans Dashboard</h3>
               {[
-                { label: 'SEO Skoru', val: metrics.seoScore, estimated: false },
-                { label: 'Platform Uygunluğu', val: metrics.platformScore, estimated: platform === 'genel' },
-                { label: 'Engagement Potansiyeli', val: metrics.engagementScore, estimated: true },
-                { label: 'Güvenilirlik Skoru', val: metrics.trustScore, estimated: true }
+                { label: 'SEO Skoru', val: metrics.seoScore, estimated: false, checklist: null, title: '' },
+                { label: 'Platform Uygunluğu', val: metrics.platformScore, estimated: platform === 'genel', checklist: metrics.platformChecklist, title: `${platforms[platform].name} kontrol listesi` },
+                { label: 'Etkileşim Potansiyeli', val: metrics.engagementScore, estimated: true, checklist: metrics.engagementChecklist, title: 'Etkileşim ölçütleri (taban 50 + tetiklenenler)' },
+                { label: 'Üslup Ciddiyeti', val: metrics.trustScore, estimated: true, checklist: metrics.trustChecklist, title: 'Üslup ölçütleri (taban 50 + tetiklenenler)' }
               ].map((m, i) => (
                 <div key={i} style={{ marginBottom: '20px' }}>
                   <div style={{ fontSize: '12px', color: '#666', marginBottom: '5px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
@@ -1485,23 +1500,30 @@ ${text}
                     <div style={{ fontSize: m.estimated ? '30px' : '36px', fontWeight: 'bold' }}>{m.val}</div>
                     <div style={{ fontSize: '12px' }}>/ 100</div>
                   </div>
+                  {m.checklist && m.checklist.length > 0 && (
+                    <div style={{ marginTop: '8px', backgroundColor: '#FAFAFA', border: '1px solid #ECECEC', borderRadius: '8px', padding: '12px 14px' }}>
+                      <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', marginBottom: '8px' }}>{m.title}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {m.checklist.map((it, ix) => (
+                          <div key={ix} style={{ fontSize: '12px', color: it.na ? '#9E9E9E' : (it.ok ? '#2E7D32' : '#C62828'), display: 'flex', gap: '6px', alignItems: 'baseline' }}>
+                            <span style={{ flexShrink: 0 }}>{it.na ? '–' : (it.ok ? '✓' : '✗')}</span>
+                            <span>
+                              {it.label}
+                              {it.na
+                                ? <span style={{ color: '#9E9E9E' }}> (bu mecrada geçerli değil)</span>
+                                : typeof it.pts === 'number'
+                                  ? <span style={{ color: it.ok ? '#2E7D32' : '#9E9E9E' }}> {it.ok ? `(+${it.pts})` : '(+0)'}</span>
+                                  : (!it.ok && it.hint ? <span style={{ color: '#9E9E9E' }}> (hedef: {it.hint})</span> : '')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
-              {metrics.platformChecklist && metrics.platformChecklist.length > 0 && (
-                <div style={{ marginTop: '-6px', marginBottom: '20px', backgroundColor: '#FAFAFA', border: '1px solid #ECECEC', borderRadius: '8px', padding: '12px 14px' }}>
-                  <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#333', marginBottom: '8px' }}>{platforms[platform].name} kontrol listesi</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {metrics.platformChecklist.map((it, ix) => (
-                      <div key={ix} style={{ fontSize: '12px', color: it.ok ? '#2E7D32' : '#C62828', display: 'flex', gap: '6px', alignItems: 'baseline' }}>
-                        <span style={{ flexShrink: 0 }}>{it.ok ? '✓' : '✗'}</span>
-                        <span>{it.label}{!it.ok && it.hint ? <span style={{ color: '#9E9E9E' }}> (hedef: {it.hint})</span> : ''}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
               <div style={{ marginTop: '15px', fontSize: '11px', color: '#616161', textAlign: 'center', fontStyle: 'italic' }}>
-                Platform Uygunluğu ve SEO skoru kural tabanlıdır (yukarıdaki kontrol listesine dayanır). "Tahmini" etiketli Engagement ve Güven skorları sezgisel kestirimlerdir; ampirik veriyle kalibre edilmemiştir.
+                Tüm skorlar kural tabanlıdır ve yukarıdaki ölçütlere dayanır. "Tahmini" etiketli Etkileşim ve Üslup Ciddiyeti skorları sezgisel ağırlıklarla hesaplanır; ampirik veriyle kalibre edilmemiştir. <strong>Üslup Ciddiyeti, olgusal doğruluğu değil; biçimsel düzgünlüğü (formalite, aktif çatı, geçiş ifadesi) ölçer.</strong>
               </div>
             </div>
           </div>
