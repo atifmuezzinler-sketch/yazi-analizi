@@ -98,8 +98,9 @@ export default function AdvancedTextAnalyzer() {
       'larında', 'lerinde', 'larından', 'lerinden', 'ların', 'lerin', 'ları', 'leri',
       'lara', 'lere', 'larda', 'lerde', 'ından', 'inden', 'undan', 'ünden',
       'ında', 'inde', 'unda', 'ünde', 'dan', 'den', 'tan', 'ten', 'nın', 'nin',
-      'nun', 'nün', 'ya', 'ye', 'da', 'de', 'ta', 'te', 'la', 'le', 'yı', 'yi',
-      'yu', 'yü', 'lar', 'ler', 'ın', 'in', 'un', 'ün'
+      'nun', 'nün', 'sı', 'si', 'su', 'sü', 'da', 'de', 'ta', 'te',
+      'la', 'le', 'yı', 'yi', 'yu', 'yü', 'lar', 'ler', 'ın', 'in', 'un', 'ün',
+      'ı', 'i', 'u', 'ü'
     ];
     for (const suf of suffixes) {
       if (w.length > suf.length + 2 && w.endsWith(suf)) {
