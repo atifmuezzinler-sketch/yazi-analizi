@@ -647,10 +647,10 @@ ${text.slice(0, 2000)}
 
   useEffect(() => {
     setMetrics(analyzeText(text));
-    if (text.trim()) {
-      setAiSuggestions(generateTemplateSuggestions(text, platform));
-      setSuggestionsSource('template');
-    }
+    // İçerik önerileri artık YALNIZCA "AI ile Üret" ile gelir. Metin/mecra/kitle/ton değişince
+    // eski öneriyi temizle ki güncel olmayan başlık/meta gösterilmesin.
+    setAiSuggestions({ headlines: [], metaDescription: '', hashtags: [] });
+    setSuggestionsSource('ai');
   }, [text, platform, audienceType, toneStyle, language]);
 
   const handleClear = () => {
@@ -1324,37 +1324,50 @@ ${text}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '15px' }}>
                 <h3 style={{ color: '#F57C00', margin: 0 }}>
                   📝 İçerik Önerileri
-                  <span style={{ fontSize: '12px', fontWeight: 'normal', marginLeft: '8px', backgroundColor: suggestionsSource === 'ai' ? '#4CAF50' : '#9E9E9E', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>
-                    {suggestionsSource === 'ai' ? 'AI üretimi' : 'şablon'}
-                  </span>
+                  {(aiSuggestions.headlines.length > 0 || aiSuggestions.metaDescription) && (
+                    <span style={{ fontSize: '12px', fontWeight: 'normal', marginLeft: '8px', backgroundColor: '#4CAF50', color: 'white', padding: '2px 8px', borderRadius: '10px' }}>AI üretimi</span>
+                  )}
                 </h3>
-                <button onClick={generateAIContentSuggestions} disabled={aiGenerating} style={{ padding: '8px 16px', fontSize: '13px', backgroundColor: aiGenerating ? '#A5D6A7' : '#F57C00', color: 'white', border: 'none', borderRadius: '6px', cursor: aiGenerating ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
-                  {aiGenerating ? 'Üretiliyor...' : '✨ AI ile Üret'}
+                <button onClick={generateAIContentSuggestions} disabled={aiGenerating} style={{ padding: '8px 16px', fontSize: '13px', backgroundColor: aiGenerating ? '#FFB74D' : '#F57C00', color: 'white', border: 'none', borderRadius: '6px', cursor: aiGenerating ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}>
+                  {aiGenerating ? (<><span className="ya-spinner" /> Üretiliyor…</>) : ((aiSuggestions.headlines.length > 0 || aiSuggestions.metaDescription) ? '✨ Yeniden Üret' : '✨ AI ile Üret')}
                 </button>
               </div>
-              {aiSuggestions.headlines.length > 0 && (
-                <div style={{ marginBottom: '15px' }}>
-                  <strong>Başlık Önerileri:</strong>
-                  {aiSuggestions.headlines.map((headline, idx) => (
-                    <div key={idx} style={{ backgroundColor: 'white', padding: '10px', borderRadius: '4px', marginTop: '8px', border: '1px solid #FFB74D' }}>{headline}</div>
-                  ))}
+
+              {aiGenerating ? (
+                <div className="ya-pulse" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '4px 0' }}>
+                  {[90, 75, 82].map((w, i) => (<div key={i} style={{ height: '12px', width: `${w}%`, backgroundColor: '#FFE0B2', borderRadius: '6px' }} />))}
                 </div>
-              )}
-              {aiSuggestions.metaDescription && (
-                <div style={{ marginBottom: '15px' }}>
-                  <strong>Meta Açıklama:</strong>
-                  <div style={{ backgroundColor: 'white', padding: '10px', borderRadius: '4px', marginTop: '8px', border: '1px solid #FFB74D' }}>{aiSuggestions.metaDescription}</div>
+              ) : (aiSuggestions.headlines.length === 0 && !aiSuggestions.metaDescription) ? (
+                <div style={{ textAlign: 'center', padding: '14px 10px', color: '#8D6E63', fontSize: '14px', lineHeight: 1.6 }}>
+                  Bu metne özel <strong style={{ color: '#E65100' }}>başlık</strong> ve <strong style={{ color: '#E65100' }}>meta açıklama</strong> önerileri için<br /><strong style={{ color: '#E65100' }}>✨ AI ile Üret</strong>'e basın.
                 </div>
-              )}
-              {aiSuggestions.hashtags.length > 0 && (
-                <div>
-                  <strong>Hashtag Önerileri:</strong>
-                  <div style={{ marginTop: '8px' }}>
-                    {aiSuggestions.hashtags.map((tag, idx) => (
-                      <span key={idx} style={{ display: 'inline-block', backgroundColor: platforms[platform].color, color: 'white', padding: '6px 12px', borderRadius: '20px', marginRight: '8px', marginBottom: '8px', fontSize: '14px' }}>{tag}</span>
-                    ))}
-                  </div>
-                </div>
+              ) : (
+                <>
+                  {aiSuggestions.headlines.length > 0 && (
+                    <div style={{ marginBottom: '15px' }}>
+                      <strong>Başlık Önerileri:</strong>
+                      {aiSuggestions.headlines.map((headline, idx) => (
+                        <div key={idx} style={{ backgroundColor: 'white', padding: '10px', borderRadius: '4px', marginTop: '8px', border: '1px solid #FFB74D' }}>{headline}</div>
+                      ))}
+                    </div>
+                  )}
+                  {aiSuggestions.metaDescription && (
+                    <div style={{ marginBottom: '15px' }}>
+                      <strong>Meta Açıklama:</strong>
+                      <div style={{ backgroundColor: 'white', padding: '10px', borderRadius: '4px', marginTop: '8px', border: '1px solid #FFB74D' }}>{aiSuggestions.metaDescription}</div>
+                    </div>
+                  )}
+                  {aiSuggestions.hashtags.length > 0 && (
+                    <div>
+                      <strong>Hashtag Önerileri:</strong>
+                      <div style={{ marginTop: '8px' }}>
+                        {aiSuggestions.hashtags.map((tag, idx) => (
+                          <span key={idx} style={{ display: 'inline-block', backgroundColor: platforms[platform].color, color: 'white', padding: '6px 12px', borderRadius: '20px', marginRight: '8px', marginBottom: '8px', fontSize: '14px' }}>{tag}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
