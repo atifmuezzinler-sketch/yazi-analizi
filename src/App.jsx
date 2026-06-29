@@ -483,7 +483,7 @@ export default function AdvancedTextAnalyzer() {
       case 'facebook':
         items = [
           { label: `Orta uzunluk — ${d.wordCount} kelime`, ok: d.wordCount <= 250, hint: '≤ 250 kelime' },
-          { label: `Etkileşim sinyali — ${d.questionCount} soru`, ok: d.questionCount >= 1, hint: '≥ 1 soru (?)' },
+          { label: `Etkileşim sinyali — ${d.questionCount} soru`, ok: d.questionCount >= 1, hint: '≥ 1 soru' },
           { label: `Konuşma dili — Ateşman ${d.readabilityScore}`, ok: d.readabilityScore >= 55, hint: '≥ 55' },
           { label: `Tek blok değil — ${d.sentenceCount} cümle`, ok: d.sentenceCount >= 3, hint: '≥ 3 cümle' },
         ];
@@ -515,7 +515,7 @@ export default function AdvancedTextAnalyzer() {
   const getEngagementChecklist = (d) => {
     const items = [
       { label: `Pozitif duygusal ton — ${d.emotionalTone}`, ok: d.emotionalTone === 'pozitif', pts: 20 },
-      { label: `Yüksek okunabilirlik — Ateşman ${d.readabilityScore}`, ok: d.readabilityScore >= 70, pts: 20 },
+      { label: `Çok yüksek okunabilirlik (70+) — Ateşman ${d.readabilityScore}`, ok: d.readabilityScore >= 70, pts: 20 },
     ];
     if (d.platform === 'instagram' || d.platform === 'facebook') {
       items.push({ label: `Sosyal için kısa — ${d.sentenceCount} cümle`, ok: d.sentenceCount <= 5, pts: 10 });
